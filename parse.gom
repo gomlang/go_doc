@@ -1,0 +1,278 @@
+package go_doc;
+
+use std::utf8;
+
+struct RawBlock {
+    kind: isize,
+    text: string,
+    lines: Vec[string],
+    line: isize,
+}
+
+fn failure(kind: ErrorKind, line: isize, message: string) -> Error {
+    Error { kind, line, message }
+}
+
+fn valid_url(url: string) -> bool {
+    (url.starts_with("https://") || url.starts_with("http://") || url.starts_with("mailto:"))
+        && !url.contains(" ")
+        && !url.contains("\t")
+        && !url.contains("\n")
+        && !url.contains("\r")
+        && !url.contains("\"")
+        && !url.contains("<")
+        && !url.contains(">")
+}
+
+fn definition(line: string) -> Option[LinkDefinition] {
+    if !line.starts_with("[") {
+        return Option::None
+    }
+    if let Some((label, url)) = line.split_once("]:") {
+        let name = label.byte_slice(1, label.byte_len());
+        let address = url.trim();
+        if name != "" && address != "" && valid_url(address) {
+            return Option::Some(LinkDefinition { label: name, url: address })
+        }
+    }
+    Option::None
+}
+
+fn numbered_marker(line: string) -> Option[(string, string)] {
+    let mut end = 0;
+    while end < line.byte_len() && line.byte_get(end) >= 48 && line.byte_get(end) <= 57 {
+        end += 1;
+    }
+    if end == 0 || end + 1 >= line.byte_len() {
+        return Option::None
+    }
+    if (line.byte_get(end) != 46 && line.byte_get(end) != 41)
+        || (line.byte_get(end + 1) != 32 && line.byte_get(end + 1) != 9) {
+        return Option::None
+    }
+    Option::Some((line.byte_slice(0, end), line.byte_slice(end + 2, line.byte_len())))
+}
+
+fn list_marker(line: string) -> Option[(bool, string, string)] {
+    if line.byte_len() >= 2
+        && (line.byte_get(0) == 45 || line.byte_get(0) == 42 || line.byte_get(0) == 43)
+        && (line.byte_get(1) == 32 || line.byte_get(1) == 9) {
+        return Option::Some((false, "-", line.byte_slice(2, line.byte_len())))
+    }
+    if line.starts_with("• ") || line.starts_with("•\t") {
+        return Option::Some((false, "-", line.byte_slice(4, line.byte_len())))
+    }
+    if let Some((marker, rest)) = numbered_marker(line) {
+        return Option::Some((true, marker, rest))
+    }
+    Option::None
+}
+
+fn doc_symbol(value: string) -> bool {
+    if value == "" {
+        return false
+    }
+    for index in 0..value.byte_len() {
+        let ch = value.byte_get(index);
+        if !(ch >= 48 && ch <= 57) && !(ch >= 65 && ch <= 90) && !(ch >= 97 && ch <= 122)
+            && ch != 95
+            && ch != 46
+            && ch != 47
+            && ch != 42
+            && ch != 45 {
+            return false
+        }
+    }
+    true
+}
+
+fn link_boundary(value: string, index: isize) -> bool {
+    if index < 0 || index >= value.byte_len() {
+        return true
+    }
+    let ch = value.byte_get(index);
+    !((ch >= 48 && ch <= 57) || (ch >= 65 && ch <= 90) || (ch >= 97 && ch <= 122) || ch == 95)
+}
+
+fn inline_node(nodes: Ref[isize], limits: Limits, line: isize) -> Result[(), Error] {
+    if nodes.get() >= limits.max_inlines {
+        return Result::Err(failure(ErrorKind::Limit, line, "inline node limit exceeded"))
+    }
+    nodes.set(nodes.get() + 1);
+    Result::Ok(())
+}
+
+fn parse_inline(
+    value: string,
+    links: HashMap[string, string],
+    nodes: Ref[isize],
+    limits: Limits,
+    line: isize,
+) -> Result[Vec[Inline], Error] {
+    let result: Vec[Inline] = Vec::new();
+    let mut cursor = 0;
+    let mut plain = 0;
+    while cursor < value.byte_len() {
+        if value.byte_get(cursor) == 91 {
+            let mut end = cursor + 1;
+            while end < value.byte_len() && value.byte_get(end) != 93 && value.byte_get(end) != 91 {
+                end += 1;
+            }
+            if end < value.byte_len() && value.byte_get(end) == 93
+                && link_boundary(value, cursor - 1)
+                && link_boundary(value, end + 1) {
+                let label = value.byte_slice(cursor + 1, end);
+                let destination = links.get(label).unwrap_or("");
+                if destination != "" || doc_symbol(label) {
+                    if plain < cursor {
+                        inline_node(nodes, limits, line)?;
+                        result.push(Inline::Text(value.byte_slice(plain, cursor)));
+                    }
+                    inline_node(nodes, limits, line)?;
+                    if destination != "" {
+                        result.push(Inline::UrlLink(label, destination));
+                    } else {
+                        result.push(Inline::DocLink(label));
+                    }
+                    cursor = end + 1;
+                    plain = cursor;
+                    continue
+                }
+            }
+        }
+        cursor += 1;
+    }
+    if plain < value.byte_len() {
+        inline_node(nodes, limits, line)?;
+        result.push(Inline::Text(value.byte_slice(plain, value.byte_len())));
+    }
+    Result::Ok(result)
+}
+
+pub fn parse(input: string, limits: Limits) -> Result[Document, Error] {
+    limits.validate()?;
+    if input.byte_len() > limits.max_input_bytes {
+        return Result::Err(failure(ErrorKind::Limit, 0, "input byte limit exceeded"))
+    }
+    utf8::decode_slice(input.to_bytes().as_slice()).map_err(
+        |_| failure(ErrorKind::Utf8, 0, "invalid UTF-8"),
+    )?;
+    if input.contains("\r") && input.replace("\r\n", "").contains("\r") {
+        return Result::Err(failure(ErrorKind::Invalid, 0, "bare carriage return"))
+    }
+    let normalized = input.replace("\r\n", "\n");
+    let lines = normalized.split("\n");
+    if lines.len() > limits.max_lines {
+        return Result::Err(failure(ErrorKind::Limit, 0, "line limit exceeded"))
+    }
+    let raw: Vec[RawBlock] = Vec::new();
+    let links: Vec[LinkDefinition] = Vec::new();
+    let mut index = 0;
+    while index < lines.len() {
+        if lines[index].trim() == "" {
+            index += 1;
+            continue
+        }
+        let start = index;
+        let stanza: Vec[string] = Vec::new();
+        while index < lines.len() && lines[index].trim() != "" {
+            stanza.push(lines[index]);
+            index += 1;
+        }
+        let mut definitions: Vec[LinkDefinition] = Vec::new();
+        for line in stanza {
+            if let Some(link) = definition(line) {
+                definitions.push(link);
+            }
+        }
+        if definitions.len() == stanza.len() {
+            if links.len() > limits.max_blocks
+                || definitions.len() > limits.max_blocks - links.len() {
+                return Result::Err(
+                    failure(ErrorKind::Limit, start, "link definition limit exceeded"),
+                )
+            }
+            for link in definitions {
+                links.push(link);
+            }
+            continue
+        }
+        if raw.len() >= limits.max_blocks {
+            return Result::Err(failure(ErrorKind::Limit, start, "block limit exceeded"))
+        }
+        if stanza.len() == 1 && stanza[0].starts_with("# ") {
+            let heading = stanza[0].byte_slice(2, stanza[0].byte_len());
+            if heading.trim() != "" {
+                raw.push(RawBlock { kind: 1, text: heading, lines: Vec::new(), line: start });
+                continue
+            }
+        }
+        if stanza[0].starts_with(" ") || stanza[0].starts_with("\t") {
+            let first = stanza[0].trim_start();
+            if list_marker(first).is_some() {
+                raw.push(RawBlock { kind: 3, text: "", lines: stanza, line: start });
+            } else {
+                raw.push(RawBlock { kind: 2, text: "", lines: stanza, line: start });
+            }
+            continue
+        }
+        raw.push(RawBlock { kind: 0, text: stanza.join("\n"), lines: Vec::new(), line: start });
+    }
+    let blocks: Vec[Block] = Vec::new();
+    let nodes = Ref::new(0);
+    let targets: HashMap[string, string] = HashMap::new();
+    for link in links {
+        targets.insert(link.label, link.url);
+    }
+    for entry in raw {
+        if entry.kind == 0 {
+            blocks.push(
+                Block::Paragraph(parse_inline(entry.text, targets, nodes, limits, entry.line)?),
+            );
+        } else if entry.kind == 1 {
+            blocks.push(
+                Block::Heading(parse_inline(entry.text, targets, nodes, limits, entry.line)?),
+            );
+        } else if entry.kind == 2 {
+            let code: Vec[string] = Vec::new();
+            for line in entry.lines {
+                if line.starts_with("\t") || line.starts_with(" ") {
+                    code.push(line.byte_slice(1, line.byte_len()));
+                } else {
+                    code.push(line);
+                }
+            }
+            blocks.push(Block::Code(code.join("\n")));
+        } else {
+            let items: Vec[Item] = Vec::new();
+            let mut ordered = false;
+            for line in entry.lines {
+                let stripped = line.trim_start();
+                if let Some((numbered, marker, body)) = list_marker(stripped) {
+                    if items.len() == 0 {
+                        ordered = numbered;
+                    }
+                    if numbered != ordered {
+                        return Result::Err(
+                            failure(ErrorKind::Invalid, entry.line, "mixed list markers"),
+                        )
+                    }
+                    items.push(
+                        Item {
+                            marker,
+                            text: parse_inline(body, targets, nodes, limits, entry.line)?,
+                        },
+                    );
+                } else if items.len() > 0 {
+                    let last = items.len() - 1;
+                    let more = parse_inline("\n" + stripped, targets, nodes, limits, entry.line)?;
+                    items[last].text.extend(more);
+                } else {
+                    return Result::Err(failure(ErrorKind::Invalid, entry.line, "invalid list"))
+                }
+            }
+            blocks.push(Block::List(ordered, items));
+        }
+    }
+    Result::Ok(Document { blocks, links })
+}

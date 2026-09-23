@@ -1,0 +1,346 @@
+package go_doc;
+
+fn append(parts: Vec[string], count: Ref[isize], value: string, limits: Limits) -> Result[(), Error] {
+    if value.byte_len() > limits.max_output_bytes - count.get() {
+        return Result::Err(
+            Error { kind: ErrorKind::Limit, line: 0, message: "output byte limit exceeded" },
+        )
+    }
+    parts.push(value);
+    count.set(count.get() + value.byte_len());
+    Result::Ok(())
+}
+
+fn html_text(parts: Vec[string], count: Ref[isize], value: string, limits: Limits) -> Result[
+    (),
+    Error,
+] {
+    let mut start = 0;
+    let mut index = 0;
+    while index < value.byte_len() {
+        let replacement = match value.byte_get(index) {
+            38 => "&amp;",
+            60 => "&lt;",
+            62 => "&gt;",
+            34 => "&quot;",
+            39 => "&#39;",
+            _ => "",
+        };
+        if replacement != "" {
+            if start < index {
+                append(parts, count, value.byte_slice(start, index), limits)?;
+            }
+            append(parts, count, replacement, limits)?;
+            start = index + 1;
+        }
+        index += 1;
+    }
+    if start < value.byte_len() {
+        append(parts, count, value.byte_slice(start, value.byte_len()), limits)?;
+    }
+    Result::Ok(())
+}
+
+fn markdown_text(parts: Vec[string], count: Ref[isize], value: string, limits: Limits) -> Result[
+    (),
+    Error,
+] {
+    let mut start = 0;
+    for index in 0..value.byte_len() {
+        let ch = value.byte_get(index);
+        if ch == 92 || ch == 91 || ch == 93 || ch == 60 || ch == 62 || ch == 42 || ch == 95
+            || ch == 96 {
+            if start < index {
+                append(parts, count, value.byte_slice(start, index), limits)?;
+            }
+            append(parts, count, "\\", limits)?;
+            append(parts, count, value.byte_slice(index, index + 1), limits)?;
+            start = index + 1;
+        }
+    }
+    if start < value.byte_len() {
+        append(parts, count, value.byte_slice(start, value.byte_len()), limits)?;
+    }
+    Result::Ok(())
+}
+
+fn markdown_url(parts: Vec[string], count: Ref[isize], url: string, limits: Limits) -> Result[
+    (),
+    Error,
+] {
+    let mut start = 0;
+    for index in 0..url.byte_len() {
+        if url.byte_get(index) == 40 || url.byte_get(index) == 41 || url.byte_get(index) == 92 {
+            if start < index {
+                append(parts, count, url.byte_slice(start, index), limits)?;
+            }
+            append(parts, count, "\\", limits)?;
+            append(parts, count, url.byte_slice(index, index + 1), limits)?;
+            start = index + 1;
+        }
+    }
+    if start < url.byte_len() {
+        append(parts, count, url.byte_slice(start, url.byte_len()), limits)?;
+    }
+    Result::Ok(())
+}
+
+fn inline_text(
+    parts: Vec[string],
+    count: Ref[isize],
+    nodes: Ref[isize],
+    inlines: Vec[Inline],
+    format: Format,
+    limits: Limits,
+) -> Result[(), Error] {
+    for inline in inlines {
+        if nodes.get() >= limits.max_inlines {
+            return Result::Err(
+                Error { kind: ErrorKind::Limit, line: 0, message: "inline node limit exceeded" },
+            )
+        }
+        nodes.set(nodes.get() + 1);
+        match inline {
+            Inline::Text(value) => {
+                if format == Format::Html {
+                    html_text(parts, count, value, limits)?;
+                } else if format == Format::Markdown {
+                    markdown_text(parts, count, value, limits)?;
+                } else {
+                    append(parts, count, value, limits)?;
+                }
+            },
+            Inline::UrlLink(label, url) => {
+                if !valid_url(url) {
+                    return Result::Err(
+                        Error { kind: ErrorKind::Invalid, line: 0, message: "unsafe link URL" },
+                    )
+                }
+                if format == Format::Html {
+                    append(parts, count, "<a href=\"", limits)?;
+                    html_text(parts, count, url, limits)?;
+                    append(parts, count, "\">", limits)?;
+                    html_text(parts, count, label, limits)?;
+                    append(parts, count, "</a>", limits)?;
+                } else if format == Format::Markdown {
+                    append(parts, count, "[", limits)?;
+                    markdown_text(parts, count, label, limits)?;
+                    append(parts, count, "](", limits)?;
+                    markdown_url(parts, count, url, limits)?;
+                    append(parts, count, ")", limits)?;
+                } else if format == Format::Comment {
+                    append(parts, count, "[", limits)?;
+                    append(parts, count, label, limits)?;
+                    append(parts, count, "]", limits)?;
+                } else {
+                    append(parts, count, label, limits)?;
+                }
+            },
+            Inline::DocLink(label) => {
+                if format == Format::Html {
+                    append(parts, count, "<code>", limits)?;
+                    html_text(parts, count, label, limits)?;
+                    append(parts, count, "</code>", limits)?;
+                } else if format == Format::Markdown {
+                    append(parts, count, "`", limits)?;
+                    append(parts, count, label, limits)?;
+                    append(parts, count, "`", limits)?;
+                } else if format == Format::Comment {
+                    append(parts, count, "[", limits)?;
+                    append(parts, count, label, limits)?;
+                    append(parts, count, "]", limits)?;
+                } else {
+                    append(parts, count, label, limits)?;
+                }
+            },
+        }
+    }
+    Result::Ok(())
+}
+
+fn code_block(parts: Vec[string], count: Ref[isize], code: string, format: Format, limits: Limits) -> Result[
+    (),
+    Error,
+] {
+    if format == Format::Html {
+        append(parts, count, "<pre>", limits)?;
+        html_text(parts, count, code, limits)?;
+        append(parts, count, "</pre>", limits)?;
+    } else if format == Format::Markdown {
+        let lines = code.split("\n");
+        for index in 0..lines.len() {
+            if index > 0 {
+                append(parts, count, "\n", limits)?;
+            }
+            append(parts, count, "    ", limits)?;
+            append(parts, count, lines[index], limits)?;
+        }
+    } else {
+        let lines = code.split("\n");
+        for index in 0..lines.len() {
+            if index > 0 {
+                append(parts, count, "\n", limits)?;
+            }
+            append(parts, count, "\t", limits)?;
+            append(parts, count, lines[index], limits)?;
+        }
+    }
+    Result::Ok(())
+}
+
+fn list_block(
+    parts: Vec[string],
+    count: Ref[isize],
+    nodes: Ref[isize],
+    ordered: bool,
+    items: Vec[Item],
+    format: Format,
+    limits: Limits,
+) -> Result[(), Error] {
+    if format == Format::Html {
+        append(
+            parts,
+            count,
+            if ordered {
+                "<ol>"
+            } else {
+                "<ul>"
+            },
+            limits,
+        )?;
+    }
+    for index in 0..items.len() {
+        if nodes.get() >= limits.max_inlines {
+            return Result::Err(
+                Error { kind: ErrorKind::Limit, line: 0, message: "list item limit exceeded" },
+            )
+        }
+        nodes.set(nodes.get() + 1);
+        if format == Format::Html {
+            append(parts, count, "<li>", limits)?;
+        } else {
+            if index > 0 {
+                append(parts, count, "\n", limits)?;
+            }
+            if format == Format::Comment || format == Format::Text {
+                append(
+                    parts,
+                    count,
+                    if ordered {
+                        " "
+                    } else {
+                        "  "
+                    },
+                    limits,
+                )?;
+            }
+            append(
+                parts,
+                count,
+                if ordered {
+                    items[index].marker + ". "
+                } else {
+                    "- "
+                },
+                limits,
+            )?;
+        }
+        inline_text(parts, count, nodes, items[index].text, format, limits)?;
+        if format == Format::Html {
+            append(parts, count, "</li>", limits)?;
+        }
+    }
+    if format == Format::Html {
+        append(
+            parts,
+            count,
+            if ordered {
+                "</ol>"
+            } else {
+                "</ul>"
+            },
+            limits,
+        )?;
+    }
+    Result::Ok(())
+}
+
+pub fn render(document: Document, format: Format, limits: Limits) -> Result[string, Error] {
+    limits.validate()?;
+    if document.blocks.len() > limits.max_blocks || document.links.len() > limits.max_blocks {
+        return Result::Err(
+            Error { kind: ErrorKind::Limit, line: 0, message: "block limit exceeded" },
+        )
+    }
+    let parts: Vec[string] = Vec::new();
+    let count = Ref::new(0);
+    let nodes = Ref::new(0);
+    for index in 0..document.blocks.len() {
+        if index > 0 {
+            append(
+                parts,
+                count,
+                if format == Format::Html {
+                    "\n"
+                } else {
+                    "\n\n"
+                },
+                limits,
+            )?;
+        }
+        match document.blocks[index] {
+            Block::Paragraph(inlines) => {
+                if format == Format::Html {
+                    append(parts, count, "<p>", limits)?;
+                }
+                inline_text(parts, count, nodes, inlines, format, limits)?;
+                if format == Format::Html {
+                    append(parts, count, "</p>", limits)?;
+                }
+            },
+            Block::Heading(inlines) => {
+                if format == Format::Html {
+                    append(parts, count, "<h3>", limits)?;
+                } else if format == Format::Markdown {
+                    append(parts, count, "### ", limits)?;
+                } else if format == Format::Comment {
+                    append(parts, count, "# ", limits)?;
+                }
+                inline_text(parts, count, nodes, inlines, format, limits)?;
+                if format == Format::Html {
+                    append(parts, count, "</h3>", limits)?;
+                }
+            },
+            Block::Code(code) => code_block(parts, count, code, format, limits)?,
+            Block::List(ordered, items) => list_block(
+                parts,
+                count,
+                nodes,
+                ordered,
+                items,
+                format,
+                limits,
+            )?,
+        }
+    }
+    if format == Format::Comment && document.links.len() > 0 {
+        if document.blocks.len() > 0 {
+            append(parts, count, "\n\n", limits)?;
+        }
+        for index in 0..document.links.len() {
+            if !valid_url(document.links[index].url) {
+                return Result::Err(
+                    Error { kind: ErrorKind::Invalid, line: 0, message: "unsafe link URL" },
+                )
+            }
+            if index > 0 {
+                append(parts, count, "\n", limits)?;
+            }
+            append(parts, count, "[", limits)?;
+            append(parts, count, document.links[index].label, limits)?;
+            append(parts, count, "]: ", limits)?;
+            append(parts, count, document.links[index].url, limits)?;
+        }
+    }
+    Result::Ok(parts.join(""))
+}

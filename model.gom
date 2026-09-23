@@ -1,0 +1,93 @@
+package go_doc;
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ErrorKind {
+    Limit,
+    Utf8,
+    Invalid,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Error {
+    pub kind: ErrorKind,
+    pub line: isize,
+    pub message: string,
+}
+
+impl ToString for Error {
+    fn to_string(self: Error) -> string {
+        f"Go doc line {self.line + 1}: {self.message}"
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Limits {
+    pub max_input_bytes: isize,
+    pub max_lines: isize,
+    pub max_blocks: isize,
+    pub max_inlines: isize,
+    pub max_output_bytes: isize,
+}
+
+impl Limits {
+    pub fn standard() -> Limits {
+        Limits {
+            max_input_bytes: 4194304,
+            max_lines: 100000,
+            max_blocks: 100000,
+            max_inlines: 250000,
+            max_output_bytes: 16777216,
+        }
+    }
+
+    pub fn validate(self: Limits) -> Result[(), Error] {
+        if self.max_input_bytes < 0 || self.max_lines < 0 || self.max_blocks < 0
+            || self.max_inlines < 0
+            || self.max_output_bytes < 0 {
+            Result::Err(Error { kind: ErrorKind::Limit, line: 0, message: "invalid limits" })
+        } else {
+            Result::Ok(())
+        }
+    }
+}
+
+#[derive(PartialEq, Eq)]
+pub enum Inline {
+    Text(string),
+    UrlLink(string, string),
+    DocLink(string),
+}
+
+#[derive(PartialEq, Eq)]
+pub struct Item {
+    pub marker: string,
+    pub text: Vec[Inline],
+}
+
+#[derive(PartialEq, Eq)]
+pub enum Block {
+    Paragraph(Vec[Inline]),
+    Heading(Vec[Inline]),
+    Code(string),
+    List(bool, Vec[Item]),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct LinkDefinition {
+    pub label: string,
+    pub url: string,
+}
+
+#[derive(PartialEq, Eq)]
+pub struct Document {
+    pub blocks: Vec[Block],
+    pub links: Vec[LinkDefinition],
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Format {
+    Comment,
+    Text,
+    Markdown,
+    Html,
+}
