@@ -1,0 +1,131 @@
+package tests;
+
+use ecosystem::go_doc;
+use ecosystem::go_doc::{Block, ErrorKind, Format, Inline, Limits};
+use std::testing;
+
+#[test]
+fn parses_blocks_links_and_renders_all_formats() -> () {
+    let input = "Package demo uses [Widget] and [Guide].\n\n# Overview\n\n  - first\n  - second\n\n\tfmt.Println(\"<x>\")\n\n[Guide]: https://example.org/guide";
+    let document = testing::expect_ok(go_doc::parse(input, Limits::standard()), "parse");
+    testing::assert_eq(document.blocks.len(), 4);
+    testing::assert_eq(document.links.len(), 1);
+    match document.blocks[0] {
+        Block::Paragraph(inlines) => {
+            testing::assert_eq(inlines.len(), 5);
+            match inlines[1] {
+                Inline::DocLink(value) => testing::assert_eq(value, "Widget"),
+                _ => testing::fail("symbol link"),
+            }
+            match inlines[3] {
+                Inline::UrlLink(label, target) => {
+                    testing::assert_eq(label, "Guide");
+                    testing::assert_eq(target, "https://example.org/guide");
+                },
+                _ => testing::fail("URL link"),
+            }
+        },
+        _ => testing::fail("paragraph"),
+    }
+    let html = testing::expect_ok(
+        go_doc::render(document, Format::Html, Limits::standard()),
+        "HTML",
+    );
+    testing::assert(html.contains("<code>Widget</code>"));
+    testing::assert(html.contains("<a href=\"https://example.org/guide\">Guide</a>"));
+    testing::assert(html.contains("<h3>Overview</h3>"));
+    testing::assert(html.contains("<ul><li>first</li><li>second</li></ul>"));
+    testing::assert(html.contains("fmt.Println(&quot;&lt;x&gt;&quot;)"));
+    let comment = testing::expect_ok(
+        go_doc::render(document, Format::Comment, Limits::standard()),
+        "comment",
+    );
+    testing::assert_eq(comment, input);
+    let markdown = testing::expect_ok(
+        go_doc::render(document, Format::Markdown, Limits::standard()),
+        "Markdown",
+    );
+    testing::assert(markdown.contains("[Guide](https://example.org/guide)"));
+    testing::assert(markdown.contains("### Overview"));
+    testing::assert(markdown.contains("    fmt.Println"));
+    let text = testing::expect_ok(
+        go_doc::render(document, Format::Text, Limits::standard()),
+        "text",
+    );
+    testing::assert(text.contains("Package demo uses Widget and Guide."));
+}
+
+#[test]
+fn syntax_edges_and_recoverable_errors() -> () {
+    let input = "map[ast.Expr]TypeAndValue and [pkg.Type].\n\n# not a heading\ncontinued\n\n  3) three\n  5) five";
+    let document = testing::expect_ok(go_doc::parse(input, Limits::standard()), "parse");
+    testing::assert_eq(document.blocks.len(), 3);
+    match document.blocks[0] {
+        Block::Paragraph(inlines) => {
+            testing::assert_eq(inlines.len(), 3);
+            match inlines[0] {
+                Inline::Text(value) => testing::assert(value.contains("map[ast.Expr]TypeAndValue")),
+                _ => testing::fail("map syntax"),
+            }
+        },
+        _ => testing::fail("paragraph"),
+    }
+    match document.blocks[2] {
+        Block::List(ordered, items) => {
+            testing::assert(ordered);
+            testing::assert_eq(items[0].marker, "3");
+            testing::assert_eq(items[1].marker, "5");
+        },
+        _ => testing::fail("ordered list"),
+    }
+    testing::assert_err(go_doc::parse("  - one\n  2. two", Limits::standard()));
+    testing::assert_err(go_doc::parse("bad\rline", Limits::standard()));
+}
+
+#[test]
+fn budgets_and_html_escaping() -> () {
+    let input = "<script>&\"' [Link]\n\n[Link]: https://example.org/?a=1&b=2";
+    let document = testing::expect_ok(go_doc::parse(input, Limits::standard()), "parse");
+    let html = testing::expect_ok(
+        go_doc::render(document, Format::Html, Limits::standard()),
+        "HTML",
+    );
+    testing::assert(html.contains("&lt;script&gt;&amp;&quot;&#39;"));
+    testing::assert(html.contains("?a=1&amp;b=2"));
+    let mut limits = Limits::standard();
+    limits.max_input_bytes = 3;
+    testing::assert_err(go_doc::parse("long", limits));
+    limits = Limits::standard();
+    limits.max_lines = 1;
+    testing::assert_err(go_doc::parse("a\nb", limits));
+    limits = Limits::standard();
+    limits.max_blocks = 1;
+    testing::assert_err(go_doc::parse("a\n\nb", limits));
+    testing::assert_ok(go_doc::parse("[A]: https://example.org", limits));
+    testing::assert_err(go_doc::parse("[A]: https://example.org\n[B]: https://example.org", limits));
+    limits.max_blocks = 0;
+    testing::assert_err(go_doc::parse("[A]: https://example.org", limits));
+    limits = Limits::standard();
+    limits.max_inlines = 1;
+    testing::assert_err(go_doc::parse("a [Name]", limits));
+    limits = Limits::standard();
+    limits.max_output_bytes = 5;
+    let error = testing::expect_err(go_doc::render(document, Format::Html, limits), "output limit");
+    testing::assert_eq(error.kind, ErrorKind::Limit);
+    let unsafe_document = go_doc::Document {
+        blocks: Vec::from_array(
+            [Block::Paragraph(Vec::from_array([Inline::UrlLink("bad", "javascript:alert(1)")]))],
+        ),
+        links: Vec::new(),
+    };
+    testing::assert_err(go_doc::render(unsafe_document, Format::Html, Limits::standard()));
+    let empty_nodes = go_doc::Document {
+        blocks: Vec::from_array(
+            [Block::Paragraph(Vec::from_array([Inline::Text(""), Inline::Text("")]))],
+        ),
+        links: Vec::new(),
+    };
+    limits = Limits::standard();
+    limits.max_inlines = 1;
+    testing::assert_err(go_doc::render(empty_nodes, Format::Text, limits));
+}
