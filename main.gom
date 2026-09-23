@@ -1,0 +1,29 @@
+package main;
+
+use ecosystem::go_doc;
+use ecosystem::go_doc::{Format, Limits};
+use std::testing;
+
+pub fn exercise() -> () {
+    let source = "Package sample refers to [Widget] and [Guide].\n\n# Example\n\n  - safe <text>\n\n[Guide]: https://example.org/guide";
+    let document = testing::expect_ok(go_doc::parse(source, Limits::standard()), "parse");
+    let html = testing::expect_ok(
+        go_doc::render(document, Format::Html, Limits::standard()),
+        "render",
+    );
+    testing::assert(html.contains("<code>Widget</code>"));
+    testing::assert(html.contains("&lt;text&gt;"));
+    let normalized = testing::expect_ok(
+        go_doc::render(document, Format::Comment, Limits::standard()),
+        "comment",
+    );
+    testing::assert_eq(normalized, source);
+    let mut limits = Limits::standard();
+    limits.max_output_bytes = 8;
+    testing::assert_err(go_doc::render(document, Format::Html, limits));
+}
+
+fn main() -> () {
+    exercise();
+    println("go_doc consumer: ok");
+}

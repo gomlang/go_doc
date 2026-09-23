@@ -1,0 +1,8 @@
+package tests;
+
+use consumer::go_doc as app;
+
+#[test]
+fn consumer_exercises_public_api() -> () {
+    app::exercise();
+}

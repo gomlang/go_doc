@@ -1,0 +1,5 @@
+[module]
+path = "consumer::go_doc"
+
+[dependencies]
+"ecosystem::go_doc" = "0.1.0"
