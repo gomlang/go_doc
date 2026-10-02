@@ -47,3 +47,32 @@ fn generated_markdown_round_trips_through_commonmark() -> () {
         testing::assert_eq(rendered, expected);
     }
 }
+
+#[test]
+fn code_span_padding_follows_commonmark_line_ending_normalization() -> () {
+    for (label, normalized) in[
+        (" \n ", "   "),
+        (" \r\n ", "   "),
+        (" \r ", "   "),
+        ("\nx ", " x "),
+        (" x\n", " x "),
+        ("\r\nx ", " x "),
+        (" x\r\n", " x "),
+        ("\n\r\n", "  "),
+    ] {
+        let doc = go_doc::Document {
+            blocks: Vec::from_array(
+                [go_doc::Block::Paragraph(Vec::from_array([go_doc::Inline::DocLink(label)]))],
+            ),
+            links: Vec::new(),
+        };
+        let emitted = testing::expect_ok(
+            go_doc::render(doc, go_doc::Format::Markdown, go_doc::Limits::standard()),
+            "emit code span",
+        );
+        testing::assert_eq(
+            testing::expect_ok(markdown::to_html(emitted), "CommonMark"),
+            "<p><code>" + normalized + "</code></p>\n",
+        );
+    }
+}

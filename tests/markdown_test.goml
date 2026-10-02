@@ -34,6 +34,12 @@ fn markdown_symbol_spans_choose_delimiters_and_preserve_edge_spaces() -> () {
         ("a``b", "```a``b```"),
         (" x ", "`  x  `"),
         ("   ", "`   `"),
+        (" \n ", "`   `"),
+        (" \r\n ", "`   `"),
+        ("\nx ", "`  x  `"),
+        (" x\n", "`  x  `"),
+        ("\r\nx ", "`  x  `"),
+        (" x\r\n", "`  x  `"),
         ("", ""),
     ] {
         testing::assert_eq(markdown_literal(Inline::DocLink(source)), expected);
