@@ -1,0 +1,45 @@
+package tests;
+
+use ecosystem::go_doc;
+use std::testing;
+
+#[test]
+fn code_blocks_remove_common_indentation_and_keep_internal_blank_lines() -> () {
+    for (source, expected) in[
+        ("    one\n      two\n\n    three", "one\n  two\n\nthree"),
+        ("\tone\n\t\ttwo\n \t\n\tthree", "one\n\ttwo\n\nthree"),
+        ("  \tone\n  \t two", "one\n two"),
+        (" one\n\ttwo", " one\n\ttwo"),
+    ] {
+        let document = testing::expect_ok(
+            go_doc::parse(source, go_doc::Limits::standard()),
+            "parse",
+        );
+        testing::assert_eq(document.blocks.len(), 1);
+        match document.blocks[0] {
+            go_doc::Block::Code(value) => testing::assert_eq(value, expected),
+            _ => testing::fail("code block"),
+        }
+        let comment = testing::expect_ok(
+            go_doc::render(document, go_doc::Format::Comment, go_doc::Limits::standard()),
+            "comment",
+        );
+        let reparsed = testing::expect_ok(
+            go_doc::parse(comment, go_doc::Limits::standard()),
+            "reparse",
+        );
+        testing::assert(document == reparsed);
+    }
+    let doc = testing::expect_ok(
+        go_doc::parse("    code\n\n    more\n\nParagraph\n\n  - item", go_doc::Limits::standard()),
+        "boundaries",
+    );
+    testing::assert_eq(doc.blocks.len(), 3);
+    testing::assert_eq(
+        testing::expect_ok(
+            go_doc::render(doc, go_doc::Format::Html, go_doc::Limits::standard()),
+            "HTML",
+        ),
+        "<pre>code\n\nmore</pre>\n<p>Paragraph</p>\n<ul><li>item</li></ul>",
+    );
+}

@@ -1,0 +1,23 @@
+package tests;
+
+use ecosystem::go_doc;
+use std::testing;
+
+#[test]
+fn downstream_code_blocks_preserve_structure_in_html() -> () {
+    let doc = testing::expect_ok(
+        go_doc::parse(
+            "Example:\n\n    if ready {\n        run()\n\n        done()\n    }",
+            go_doc::Limits::standard(),
+        ),
+        "parse",
+    );
+    testing::assert_eq(doc.blocks.len(), 2);
+    testing::assert_eq(
+        testing::expect_ok(
+            go_doc::render(doc, go_doc::Format::Html, go_doc::Limits::standard()),
+            "HTML",
+        ),
+        "<p>Example:</p>\n<pre>if ready {\n    run()\n\n    done()\n}</pre>",
+    );
+}
