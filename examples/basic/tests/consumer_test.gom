@@ -1,6 +1,6 @@
 package tests;
 
-use consumer::go_doc as app;
+use ecosystem::go_doc::examples::basic as app;
 
 #[test]
 fn consumer_exercises_public_api() -> () {
