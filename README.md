@@ -15,6 +15,15 @@ output bytes; render checks its budget
 even for caller-constructed ASTs. HTML escapes text and URLs; only `http`,
 `https`, and `mailto` URLs are accepted as links.
 
+Markdown rendering escapes ASCII punctuation in ordinary text and link labels,
+including entity ampersands and line-leading list/heading markers. Link destinations
+escape ampersands, parentheses and backslashes. Symbol code spans choose a delimiter
+longer than every backtick run and protect significant edge spaces in caller-built
+ASTs. These rules follow CommonMark's [backslash escapes](https://spec.commonmark.org/0.31.2/#backslash-escapes)
+and [code spans](https://spec.commonmark.org/0.31.2/#code-spans); they prevent literal
+comment text from becoming unintended Markdown formatting. Newlines in code spans
+still follow CommonMark's whitespace normalization.
+
 This module intentionally omits Go source extraction, package/import resolution,
 automatic URL linking, note extraction, deprecation semantics, directives, and
 `gofmt`'s legacy-heading and indentation heuristics. Symbol links render as

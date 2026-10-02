@@ -48,8 +48,8 @@ fn markdown_text(parts: Vec[string], count: Ref[isize], value: string, limits: L
     let mut start = 0;
     for index in 0..value.byte_len() {
         let ch = value.byte_get(index);
-        if ch == 92 || ch == 91 || ch == 93 || ch == 60 || ch == 62 || ch == 42 || ch == 95
-            || ch == 96 {
+        if (ch >= 33 && ch <= 47) || (ch >= 58 && ch <= 64) || (ch >= 91 && ch <= 96)
+            || (ch >= 123 && ch <= 126) {
             if start < index {
                 append(parts, count, value.byte_slice(start, index), limits)?;
             }
@@ -70,7 +70,8 @@ fn markdown_url(parts: Vec[string], count: Ref[isize], url: string, limits: Limi
 ] {
     let mut start = 0;
     for index in 0..url.byte_len() {
-        if url.byte_get(index) == 40 || url.byte_get(index) == 41 || url.byte_get(index) == 92 {
+        if url.byte_get(index) == 40 || url.byte_get(index) == 41 || url.byte_get(index) == 92
+            || url.byte_get(index) == 38 {
             if start < index {
                 append(parts, count, url.byte_slice(start, index), limits)?;
             }
@@ -83,6 +84,50 @@ fn markdown_url(parts: Vec[string], count: Ref[isize], url: string, limits: Limi
         append(parts, count, url.byte_slice(start, url.byte_len()), limits)?;
     }
     Result::Ok(())
+}
+
+fn markdown_code(parts: Vec[string], count: Ref[isize], value: string, limits: Limits) -> Result[
+    (),
+    Error,
+] {
+    if value == "" {
+        return Result::Ok(())
+    }
+    let mut longest = 0;
+    let mut run = 0;
+    let mut nonspace = false;
+    for ch in value.chars() {
+        if ch == '`' {
+            run += 1;
+            if run > longest {
+                longest = run;
+            }
+        } else {
+            run = 0;
+        }
+        if ch != ' ' {
+            nonspace = true;
+        }
+    }
+    let padding = value.starts_with("`") || value.ends_with("`")
+        || (nonspace && value.starts_with(" ") && value.ends_with(" "));
+    let remaining = limits.max_output_bytes - count.get();
+    if longest >= remaining / 2 || value.byte_len() > remaining - (longest + 1) * 2
+        || (padding && value.byte_len() > remaining - (longest + 1) * 2 - 2) {
+        return Result::Err(
+            Error { kind: ErrorKind::Limit, line: 0, message: "output byte limit exceeded" },
+        )
+    }
+    let delimiter = "`".repeat(longest + 1);
+    append(parts, count, delimiter, limits)?;
+    if padding {
+        append(parts, count, " ", limits)?;
+    }
+    append(parts, count, value, limits)?;
+    if padding {
+        append(parts, count, " ", limits)?;
+    }
+    append(parts, count, delimiter, limits)
 }
 
 fn inline_text(
@@ -142,9 +187,7 @@ fn inline_text(
                     html_text(parts, count, label, limits)?;
                     append(parts, count, "</code>", limits)?;
                 } else if format == Format::Markdown {
-                    append(parts, count, "`", limits)?;
-                    append(parts, count, label, limits)?;
-                    append(parts, count, "`", limits)?;
+                    markdown_code(parts, count, label, limits)?;
                 } else if format == Format::Comment {
                     append(parts, count, "[", limits)?;
                     append(parts, count, label, limits)?;
