@@ -96,7 +96,13 @@ fn markdown_code(parts: Vec[string], count: Ref[isize], value: string, limits: L
     let mut longest = 0;
     let mut run = 0;
     let mut nonspace = false;
+    let mut normalized_bytes = value.byte_len();
+    let mut previous_cr = false;
     for ch in value.chars() {
+        if previous_cr && ch == '\n' {
+            normalized_bytes -= 1;
+        }
+        previous_cr = ch == '\r';
         if ch == '`' {
             run += 1;
             if run > longest {
@@ -105,19 +111,22 @@ fn markdown_code(parts: Vec[string], count: Ref[isize], value: string, limits: L
         } else {
             run = 0;
         }
-        if ch != ' ' {
+        if ch != ' ' && ch != '\r' && ch != '\n' {
             nonspace = true;
         }
     }
+    let starts_space = value.starts_with(" ") || value.starts_with("\r") || value.starts_with("\n");
+    let ends_space = value.ends_with(" ") || value.ends_with("\r") || value.ends_with("\n");
     let padding = value.starts_with("`") || value.ends_with("`")
-        || (nonspace && value.starts_with(" ") && value.ends_with(" "));
+        || (nonspace && starts_space && ends_space);
     let remaining = limits.max_output_bytes - count.get();
-    if longest >= remaining / 2 || value.byte_len() > remaining - (longest + 1) * 2
-        || (padding && value.byte_len() > remaining - (longest + 1) * 2 - 2) {
+    if longest >= remaining / 2 || normalized_bytes > remaining - (longest + 1) * 2
+        || (padding && normalized_bytes > remaining - (longest + 1) * 2 - 2) {
         return Result::Err(
             Error { kind: ErrorKind::Limit, line: 0, message: "output byte limit exceeded" },
         )
     }
+    let value = value.replace("\r\n", " ").replace("\r", " ").replace("\n", " ");
     let delimiter = "`".repeat(longest + 1);
     append(parts, count, delimiter, limits)?;
     if padding {

@@ -19,7 +19,8 @@ Markdown rendering escapes ASCII punctuation in ordinary text and link labels,
 including entity ampersands and line-leading list/heading markers. Link destinations
 escape ampersands, parentheses and backslashes. Symbol code spans choose a delimiter
 longer than every backtick run and protect significant edge spaces in caller-built
-ASTs. These rules follow CommonMark's [backslash escapes](https://spec.commonmark.org/0.31.2/#backslash-escapes)
+ASTs. Code-span line endings are normalized to spaces before emission and padding
+decisions, including all-whitespace labels and consecutive line breaks. These rules follow CommonMark's [backslash escapes](https://spec.commonmark.org/0.31.2/#backslash-escapes)
 and [code spans](https://spec.commonmark.org/0.31.2/#code-spans); they prevent literal
 comment text from becoming unintended Markdown formatting. Newlines in code spans
 still follow CommonMark's whitespace normalization.
