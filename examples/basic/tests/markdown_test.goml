@@ -1,0 +1,49 @@
+package tests;
+
+use ecosystem::go_doc;
+use ecosystem::markdown;
+use std::testing;
+
+#[test]
+fn exported_markdown_rendering_keeps_comment_markers_literal() -> () {
+    let doc = testing::expect_ok(
+        go_doc::parse("# literal\n1. literal\n&amp;", go_doc::Limits::standard()),
+        "parse",
+    );
+    testing::assert_eq(
+        testing::expect_ok(
+            go_doc::render(doc, go_doc::Format::Markdown, go_doc::Limits::standard()),
+            "render",
+        ),
+        "\\# literal\n1\\. literal\n\\&amp\\;",
+    );
+}
+
+#[test]
+fn generated_markdown_round_trips_through_commonmark() -> () {
+    for inline in[
+        go_doc::Inline::Text("# heading\n1. item\n&amp;"),
+        go_doc::Inline::Text("![x](url) <b>中文</b>"),
+        go_doc::Inline::DocLink("`edge`"),
+        go_doc::Inline::DocLink("a``b"),
+        go_doc::Inline::DocLink(" x "),
+        go_doc::Inline::DocLink("   "),
+        go_doc::Inline::UrlLink("&copy;", "https://example.test/?q=&copy;"),
+    ] {
+        let doc = go_doc::Document {
+            blocks: Vec::from_array([go_doc::Block::Paragraph(Vec::from_array([inline]))]),
+            links: Vec::new(),
+        };
+        let emitted = testing::expect_ok(
+            go_doc::render(doc, go_doc::Format::Markdown, go_doc::Limits::standard()),
+            "emit Markdown",
+        );
+        let rendered = testing::expect_ok(markdown::to_html(emitted), "CommonMark");
+        let expected = testing::expect_ok(
+            go_doc::render(doc, go_doc::Format::Html, go_doc::Limits::standard()),
+            "direct HTML",
+        )
+            + "\n";
+        testing::assert_eq(rendered, expected);
+    }
+}

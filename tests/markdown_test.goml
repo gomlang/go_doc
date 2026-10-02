@@ -1,0 +1,65 @@
+package tests;
+
+use ecosystem::go_doc;
+use ecosystem::go_doc::{Block, Inline, Format, Limits};
+use std::testing;
+
+fn markdown_literal(value: Inline) -> string {
+    let doc = go_doc::Document {
+        blocks: Vec::from_array([Block::Paragraph(Vec::from_array([value]))]),
+        links: Vec::new(),
+    };
+    testing::expect_ok(go_doc::render(doc, Format::Markdown, Limits::standard()), "Markdown")
+}
+
+#[test]
+fn markdown_preserves_punctuation_and_entity_spellings() -> () {
+    testing::assert_eq(
+        markdown_literal(Inline::Text("# title\n1. item\n- item\n&amp; ![x](url)")),
+        "\\# title\n1\\. item\n\\- item\n\\&amp\\; \\!\\[x\\]\\(url\\)",
+    );
+    testing::assert_eq(
+        markdown_literal(Inline::UrlLink("&copy;", "https://example.test/?a=&copy;")),
+        "[\\&copy\\;](https://example.test/?a=\\&copy;)",
+    );
+    testing::assert_eq(markdown_literal(Inline::Text("中文🙂")), "中文🙂");
+}
+
+#[test]
+fn markdown_symbol_spans_choose_delimiters_and_preserve_edge_spaces() -> () {
+    for (source, expected) in[
+        ("Type", "`Type`"),
+        ("a`b", "``a`b``"),
+        ("`x`", "`` `x` ``"),
+        ("a``b", "```a``b```"),
+        (" x ", "`  x  `"),
+        ("   ", "`   `"),
+        ("", ""),
+    ] {
+        testing::assert_eq(markdown_literal(Inline::DocLink(source)), expected);
+        let doc = go_doc::Document {
+            blocks: Vec::from_array([Block::Paragraph(Vec::from_array([Inline::DocLink(source)]))]),
+            links: Vec::new(),
+        };
+        testing::assert_eq(
+            testing::expect_ok(
+                go_doc::render(
+                    doc,
+                    Format::Markdown,
+                    Limits { max_output_bytes: expected.byte_len(), ..Limits::standard() },
+                ),
+                "exact limit",
+            ),
+            expected,
+        );
+        if expected.byte_len() > 0 {
+            testing::assert_err(
+                go_doc::render(
+                    doc,
+                    Format::Markdown,
+                    Limits { max_output_bytes: expected.byte_len() - 1, ..Limits::standard() },
+                ),
+            );
+        }
+    }
+}

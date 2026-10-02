@@ -1,2 +1,5 @@
 [module]
 path = "ecosystem::go_doc"
+
+[dev-dependencies]
+"ecosystem::markdown" = "0.1.0"
