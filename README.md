@@ -9,6 +9,13 @@ syntax follows the [Go doc comment specification](https://go.dev/doc/comment).
 single-line `# ` headings, indented code blocks, bullet or numbered lists,
 `[Text]: URL` definitions, URL links, and lexical symbol links. Use
 `render(document, Format::Html, limits)` or another `Format` for output.
+Indented code removes the longest common space/tab prefix of its nonblank lines,
+following [Go comment code blocks](https://go.dev/doc/comment#code). Relative
+indentation and interior blank lines are retained in one code block; trailing
+blank lines separate it from later prose or lists. Whitespace-only interior lines
+normalize to empty lines. Mixed tab/space prefixes are compared literally rather
+than expanded to display columns.
+
 All failures return `Error` with a kind, line and message. Limits bound input
 bytes, lines, blocks and link definitions separately, inline nodes, and
 output bytes; render checks its budget

@@ -149,6 +149,33 @@ fn parse_inline(
     Result::Ok(result)
 }
 
+fn unindent_code(lines: Vec[string]) -> string {
+    let mut prefix = lines[0].byte_len();
+    for line in lines {
+        if line.trim() == "" {
+            continue
+        }
+        let mut count = 0;
+        while count < prefix && count < line.byte_len()
+            && (line.byte_get(count) == b' ' || line.byte_get(count) == b'\t')
+            && line.byte_get(count) == lines[0].byte_get(count) {
+            count += 1;
+        }
+        prefix = count;
+    }
+    let result = Vec::new();
+    for line in lines {
+        result.push(
+            if line.trim() == "" {
+                ""
+            } else {
+                line.byte_slice(prefix, line.byte_len())
+            },
+        );
+    }
+    result.join("\n")
+}
+
 pub fn parse(input: string, limits: Limits) -> Result[Document, Error] {
     limits.validate()?;
     if input.byte_len() > limits.max_input_bytes {
@@ -212,6 +239,25 @@ pub fn parse(input: string, limits: Limits) -> Result[Document, Error] {
             if list_marker(first).is_some() {
                 raw.push(RawBlock { kind: 3, text: "", lines: stanza, line: start });
             } else {
+                loop {
+                    let mut next = index;
+                    while next < lines.len() && lines[next].trim() == "" {
+                        next += 1;
+                    }
+                    if next == lines.len()
+                        || !(lines[next].starts_with(" ") || lines[next].starts_with("\t"))
+                        || list_marker(lines[next].trim_start()).is_some() {
+                        break
+                    }
+                    for _ in index..next {
+                        stanza.push("");
+                    }
+                    index = next;
+                    while index < lines.len() && lines[index].trim() != "" {
+                        stanza.push(lines[index]);
+                        index += 1;
+                    }
+                }
                 raw.push(RawBlock { kind: 2, text: "", lines: stanza, line: start });
             }
             continue
@@ -234,15 +280,7 @@ pub fn parse(input: string, limits: Limits) -> Result[Document, Error] {
                 Block::Heading(parse_inline(entry.text, targets, nodes, limits, entry.line)?),
             );
         } else if entry.kind == 2 {
-            let code: Vec[string] = Vec::new();
-            for line in entry.lines {
-                if line.starts_with("\t") || line.starts_with(" ") {
-                    code.push(line.byte_slice(1, line.byte_len()));
-                } else {
-                    code.push(line);
-                }
-            }
-            blocks.push(Block::Code(code.join("\n")));
+            blocks.push(Block::Code(unindent_code(entry.lines)));
         } else {
             let items: Vec[Item] = Vec::new();
             let mut ordered = false;
