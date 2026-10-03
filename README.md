@@ -50,3 +50,13 @@ goml verify --timeout 300s
 ```
 
 `goml test` builds the example and runs its tests. `goml verify` repeats the example checks as an independent module against an isolated registry snapshot. `(cd ../verification && just ecosystem-test go_doc)` also retains the library-specific smoke and compatibility checks.
+
+## Native dependency setup
+
+The HTML dependency includes a managed Go adapter for document parsing and
+sanitization. Projects using this module need a module-root `go.mod`, even when
+they use only the existing text APIs. A minimal Go module with `go 1.26.0` is
+sufficient; GoML generates the adapter requirements and replacements. This
+repository includes that manifest. Fetch the declared native Go dependencies
+before building with readonly module resolution; ecosystem verification and CI
+do this automatically.
