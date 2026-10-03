@@ -1,0 +1,169 @@
+package go_doc;
+
+use std::unicode;
+use std::utf8;
+
+fn url_letter(byte: byte) -> bool {
+    (byte >= b'a' && byte <= b'z') || (byte >= b'A' && byte <= b'Z')
+        || (byte >= b'0' && byte <= b'9')
+}
+
+fn url_punctuation(byte: byte) -> bool {
+    byte == b'.' || byte == b',' || byte == b':' || byte == b';' || byte == b'?' || byte == b'!'
+}
+
+fn url_host(byte: byte) -> bool {
+    url_letter(byte) || byte == b'_' || byte == b'@' || byte == b'-' || byte == b'.' || byte == b'['
+        || byte == b']'
+        || byte == b':'
+}
+
+fn url_path(byte: byte) -> bool {
+    url_letter(byte) || byte == b'$' || byte == b'\'' || byte == b'(' || byte == b')'
+        || byte == b'*'
+        || byte == b'+'
+        || byte == b'&'
+        || byte == b'#'
+        || byte == b'='
+        || byte == b'@'
+        || byte == b'~'
+        || byte == b'_'
+        || byte == b'/'
+        || byte == b'-'
+        || byte == b'['
+        || byte == b']'
+        || byte == b'{'
+        || byte == b'}'
+        || byte == b'%'
+}
+
+fn url_pairs(value: string) -> HashMap[isize, isize] {
+    let pairs = HashMap::new();
+    let stack: Vec[(byte, isize)] = Vec::new();
+    for index in 0..value.byte_len() {
+        let byte = value.byte_get(index);
+        if byte == b'(' {
+            stack.push((b')', index));
+        } else if byte == b'[' {
+            stack.push((b']', index));
+        } else if byte == b'{' {
+            stack.push((b'}', index));
+        } else if byte == b')' || byte == b']' || byte == b'}' {
+            if !stack.is_empty() && stack[stack.len() - 1].0 == byte {
+                let pair = stack[stack.len() - 1];
+                let _ = stack.pop();
+                pairs.set(pair.1, index);
+            } else {
+                stack.clear();
+            }
+        } else if !url_path(byte) && !url_punctuation(byte) {
+            stack.clear();
+        }
+    }
+    pairs
+}
+
+fn url_prefix(value: string, start: isize, prefix: string) -> bool {
+    if value.byte_len() - start < prefix.byte_len() {
+        return false
+    }
+    for index in 0..prefix.byte_len() {
+        if value.byte_get(start + index) != prefix.byte_get(index) {
+            return false
+        }
+    }
+    true
+}
+
+fn automatic_url_end(value: string, start: isize, pairs: HashMap[isize, isize]) -> isize {
+    let prefix = if url_prefix(value, start, "http://") {
+        7
+    } else if url_prefix(value, start, "https://") {
+        8
+    } else {
+        return start
+    };
+    let mut cursor = start + prefix;
+    if cursor >= value.byte_len() || !url_host(value.byte_get(cursor))
+        || url_punctuation(value.byte_get(cursor)) {
+        return start
+    }
+    let mut end = cursor;
+    while cursor < value.byte_len() && url_host(value.byte_get(cursor)) {
+        if !url_punctuation(value.byte_get(cursor)) {
+            end = cursor + 1;
+        }
+        cursor += 1;
+    }
+    cursor = end;
+    while cursor < value.byte_len() {
+        let byte = value.byte_get(cursor);
+        if url_punctuation(byte) {
+            cursor += 1;
+            continue
+        }
+        if !url_path(byte) {
+            break
+        }
+        if byte == b'(' || byte == b'[' || byte == b'{' {
+            let Some(close) = pairs.get(cursor) else {
+                break
+            };
+            cursor = close + 1;
+            end = cursor;
+            continue
+        }
+        if byte == b')' || byte == b']' || byte == b'}' {
+            break
+        }
+        end = cursor + 1;
+        cursor += 1;
+    }
+    end
+}
+
+fn auto_text_next(value: string, start: isize) -> isize {
+    let mut cursor = start;
+    for ch in value.byte_slice(start, value.byte_len()).chars() {
+        if unicode::is_letter(ch) || ch == '_' || (cursor > start && ch >= '0' && ch <= '9') {
+            cursor += utf8::encoded_len(ch);
+        } else {
+            if cursor == start {
+                cursor += utf8::encoded_len(ch);
+            }
+            break
+        }
+    }
+    cursor
+}
+
+fn html_auto_text(parts: Vec[string], count: Ref[isize], value: string, limits: Limits) -> Result[
+    (),
+    Error,
+] {
+    if value.byte_len() > limits.max_output_bytes - count.get() {
+        return Result::Err(
+            Error { kind: ErrorKind::Limit, line: 0, message: "output byte limit exceeded" },
+        )
+    }
+    let pairs = url_pairs(value);
+    let mut cursor = 0;
+    let mut plain = 0;
+    while cursor < value.byte_len() {
+        let end = automatic_url_end(value, cursor, pairs);
+        if end > cursor {
+            html_text(parts, count, value.byte_slice(plain, cursor), limits)?;
+            let url = value.byte_slice(cursor, end);
+            append(parts, count, "<a href=\"", limits)?;
+            html_text(parts, count, url, limits)?;
+            append(parts, count, "\">", limits)?;
+            html_text(parts, count, url, limits)?;
+            append(parts, count, "</a>", limits)?;
+            cursor = end;
+            plain = end;
+        } else {
+            cursor = auto_text_next(value, cursor);
+        }
+    }
+    html_text(parts, count, value.byte_slice(plain, value.byte_len()), limits)
+}

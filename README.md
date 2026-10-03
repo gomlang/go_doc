@@ -22,6 +22,16 @@ output bytes; render checks its budget
 even for caller-constructed ASTs. HTML escapes text and URLs; only `http`,
 `https`, and `mailto` URLs are accepted as links.
 
+HTML rendering automatically links bare `http://` and `https://` URLs in prose,
+headings and list items. Recognition follows Go doc-comment URL heuristics: an
+ASCII host, no URL recognition inside identifiers, balanced parentheses/brackets/braces
+in paths, and sentence punctuation
+excluded at the end. URLs inside code blocks or existing links are not linked
+again. Other schemes and bare email addresses remain text. Automatic linking is
+an HTML rendering operation; the public AST and Comment/Text/Markdown output keep
+the original plain text. Escaping and the output-byte limit apply to generated
+anchors, including caller-built documents.
+
 Markdown rendering escapes ASCII punctuation in ordinary text and link labels,
 including entity ampersands and line-leading list/heading markers. Link destinations
 escape ampersands, parentheses and backslashes. Symbol code spans choose a delimiter
@@ -33,7 +43,7 @@ comment text from becoming unintended Markdown formatting. Newlines in code span
 still follow CommonMark's whitespace normalization.
 
 This module intentionally omits Go source extraction, package/import resolution,
-automatic URL linking, note extraction, deprecation semantics, directives, and
+note extraction, deprecation semantics, directives, and
 `gofmt`'s legacy-heading and indentation heuristics. Symbol links render as
 code in HTML and Markdown because a package resolver is not supplied. List
 items support continuation text but no nested blocks. Unsupported bracketed

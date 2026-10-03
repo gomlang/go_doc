@@ -1,0 +1,144 @@
+package tests;
+
+use ecosystem::go_doc;
+use ecosystem::go_doc::{Block, Document, Format, Inline, Limits};
+use std::testing;
+
+fn auto_html(value: string) -> string {
+    testing::expect_ok(
+        go_doc::render(
+            Document {
+                blocks: Vec::from_array([Block::Paragraph(Vec::from_array([Inline::Text(value)]))]),
+                links: Vec::new(),
+            },
+            Format::Html,
+            Limits::standard(),
+        ),
+        "HTML",
+    )
+}
+
+#[test]
+fn url_punctuation_brackets_and_ascii_host_match_go_comment_reference_cases() -> () {
+    for (input, url, suffix) in[
+        ("https://example.test.", "https://example.test", "."),
+        ("http://localhost:8080/a?x=1&y=2!", "http://localhost:8080/a?x=1&amp;y=2", "!"),
+        ("https://x/a(b)c.", "https://x/a(b)c", "."),
+        ("https://x/a(b)).", "https://x/a(b)", ")."),
+        ("https://x/a[b]{c}(d)", "https://x/a[b]{c}(d)", ""),
+        ("https://x/a(b]c", "https://x/a", "(b]c"),
+        ("https://x/a(b", "https://x/a", "(b"),
+        ("https://x/a...,:;?!", "https://x/a", "...,:;?!"),
+        ("http://[::1]:8080/path", "http://[::1]:8080/path", ""),
+        ("https://x/中文", "https://x/", "中文"),
+    ] {
+        testing::assert_eq(auto_html(input), f"<p><a href=\"{url}\">{url}</a>{suffix}</p>");
+    }
+    for input in[
+        "https://",
+        "http://.bad",
+        "HTTPS://example.test",
+        "mailto:a@example.test",
+        "ftp://example.test",
+        "www.example.test",
+        "https://中文",
+    ] {
+        testing::assert_eq(auto_html(input), f"<p>{input}</p>");
+    }
+    testing::assert_eq(
+        auto_html("See <https://x/?a=1&b=2>."),
+        "<p>See &lt;<a href=\"https://x/?a=1&amp;b=2\">https://x/?a=1&amp;b=2</a>&gt;.</p>",
+    );
+}
+
+#[test]
+fn only_prose_html_changes_and_explicit_links_are_not_nested() -> () {
+    let input = "See https://example.test and [Guide].\n\n# https://heading.test\n\n  - https://list.test\n\n\thttps://code.test\n\n[Guide]: https://guide.test";
+    let document = testing::expect_ok(go_doc::parse(input, Limits::standard()), "parse");
+    testing::assert_eq(
+        testing::expect_ok(go_doc::render(document, Format::Comment, Limits::standard()), "comment"),
+        input,
+    );
+    let html = testing::expect_ok(
+        go_doc::render(document, Format::Html, Limits::standard()),
+        "HTML",
+    );
+    testing::assert(html.contains("<h3><a href=\"https://heading.test\">"));
+    testing::assert(html.contains("<li><a href=\"https://list.test\">"));
+    testing::assert(html.contains("<pre>https://code.test</pre>"));
+    testing::assert(html.contains("<a href=\"https://guide.test\">Guide</a>"));
+    testing::assert_eq(
+        auto_html("https://a.test https://b.test"),
+        "<p><a href=\"https://a.test\">https://a.test</a> <a href=\"https://b.test\">https://b.test</a></p>",
+    );
+    let plain = testing::expect_ok(go_doc::parse("https://x", Limits::standard()), "plain");
+    match plain.blocks[0] {
+        Block::Paragraph(nodes) => {
+            testing::assert_eq(nodes.len(), 1);
+            testing::assert(nodes[0] == Inline::Text("https://x"));
+        },
+        _ => testing::fail("paragraph"),
+    }
+    testing::assert_eq(
+        testing::expect_ok(go_doc::render(plain, Format::Markdown, Limits::standard()), "Markdown"),
+        "https\\:\\/\\/x",
+    );
+}
+
+#[test]
+fn generated_anchors_obey_exact_output_and_inline_budgets() -> () {
+    let document = testing::expect_ok(go_doc::parse("https://x", Limits::standard()), "parse");
+    let html = auto_html("https://x");
+    testing::assert_ok(
+        go_doc::render(
+            document,
+            Format::Html,
+            Limits { max_output_bytes: html.byte_len(), ..Limits::standard() },
+        ),
+    );
+    testing::assert_err(
+        go_doc::render(
+            document,
+            Format::Html,
+            Limits { max_output_bytes: html.byte_len() - 1, ..Limits::standard() },
+        ),
+    );
+    testing::assert_err(
+        go_doc::render(document, Format::Html, Limits { max_inlines: 0, ..Limits::standard() }),
+    );
+    testing::assert_eq(
+        auto_html("https://x/" + "(".repeat(1000)),
+        "<p><a href=\"https://x/\">https://x/</a>" + "(".repeat(1000) + "</p>",
+    );
+}
+
+#[test]
+fn unmatched_nested_urls_do_not_rescan_each_remaining_suffix() -> () {
+    let input = "https://x/(".repeat(6000);
+    let expected = "<p>" + "<a href=\"https://x/\">https://x/</a>(".repeat(6000) + "</p>";
+    testing::assert_eq(auto_html(input), expected);
+    testing::assert_eq(
+        auto_html("https://x/(a[bad)tail] https://y/(ok)"),
+        "<p><a href=\"https://x/\">https://x/</a>(a[bad)tail] <a href=\"https://y/(ok)\">https://y/(ok)</a></p>",
+    );
+}
+
+#[test]
+fn automatic_links_respect_go_identifier_boundaries() -> () {
+    for input in[
+        "xhttps://x",
+        "_http://x",
+        "你好https://x",
+        "a1https://x",
+        "éhttps://x",
+        "a_2https://x",
+    ] {
+        testing::assert_eq(auto_html(input), "<p>" + input + "</p>");
+    }
+    for prefix in["1", "a-", "你好：", "😀", "("] {
+        testing::assert_eq(
+            auto_html(prefix + "https://x"),
+            "<p>" + prefix + "<a href=\"https://x\">https://x</a></p>",
+        );
+    }
+}

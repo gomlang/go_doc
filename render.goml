@@ -157,7 +157,7 @@ fn inline_text(
         match inline {
             Inline::Text(value) => {
                 if format == Format::Html {
-                    html_text(parts, count, value, limits)?;
+                    html_auto_text(parts, count, value, limits)?;
                 } else if format == Format::Markdown {
                     markdown_text(parts, count, value, limits)?;
                 } else {

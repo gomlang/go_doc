@@ -1,0 +1,27 @@
+package tests;
+
+use ecosystem::go_doc;
+use std::testing;
+
+#[test]
+fn downstream_links_bare_urls_without_changing_comment_source() -> () {
+    let input = "Visit https://example.test/a(b)?x=1&y=2.\n\n\thttps://code.test";
+    let document = testing::expect_ok(go_doc::parse(input, go_doc::Limits::standard()), "parse");
+    let html = testing::expect_ok(
+        go_doc::render(document, go_doc::Format::Html, go_doc::Limits::standard()),
+        "HTML",
+    );
+    testing::assert(
+        html.contains(
+            "<a href=\"https://example.test/a(b)?x=1&amp;y=2\">https://example.test/a(b)?x=1&amp;y=2</a>.",
+        ),
+    );
+    testing::assert(html.contains("<pre>https://code.test</pre>"));
+    testing::assert_eq(
+        testing::expect_ok(
+            go_doc::render(document, go_doc::Format::Comment, go_doc::Limits::standard()),
+            "comment",
+        ),
+        input,
+    );
+}
