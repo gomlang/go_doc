@@ -1,0 +1,22 @@
+package tests;
+
+use ecosystem::go_doc;
+use std::testing;
+
+#[test]
+fn downstream_duplicate_link_labels_use_the_first_definition() -> () {
+    let document = testing::expect_ok(
+        go_doc::parse(
+            "[Guide]\n\n[Guide]: https://first.test\n[Guide]: https://second.test",
+            go_doc::Limits::standard(),
+        ),
+        "parse",
+    );
+    testing::assert_eq(
+        testing::expect_ok(
+            go_doc::render(document, go_doc::Format::Html, go_doc::Limits::standard()),
+            "render",
+        ),
+        "<p><a href=\"https://first.test\">Guide</a></p>",
+    );
+}

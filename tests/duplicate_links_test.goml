@@ -1,0 +1,27 @@
+package tests;
+
+use ecosystem::go_doc;
+use ecosystem::go_doc::{Block, Inline, Limits};
+use std::testing;
+
+#[test]
+fn duplicate_link_definitions_preserve_the_first_destination() -> () {
+    for separator in["\n", "\n\n"] {
+        let source = "[Guide] and [guide].\n\n[Guide]: https://first.test" + separator
+            + "[Guide]: https://second.test\n[guide]: https://lower.test";
+        let document = testing::expect_ok(go_doc::parse(source, Limits::standard()), "parse");
+        testing::assert_eq(document.links.len(), 3);
+        testing::assert_eq(document.links[0].url, "https://first.test");
+        testing::assert_eq(document.links[1].url, "https://second.test");
+        let inlines = match document.blocks[0] {
+            Block::Paragraph(inlines) => inlines,
+            _ => {
+                testing::fail("paragraph");
+                Vec::new()
+            },
+        };
+        testing::assert(inlines.contains(Inline::UrlLink("Guide", "https://first.test")));
+        testing::assert(inlines.contains(Inline::UrlLink("guide", "https://lower.test")));
+        testing::assert(!inlines.contains(Inline::UrlLink("Guide", "https://second.test")));
+    }
+}

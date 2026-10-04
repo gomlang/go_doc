@@ -12,6 +12,8 @@ single-line `# ` headings, indented code blocks, bullet or numbered lists,
 Symbol links require adjacent Unicode punctuation, ASCII spaces/tabs/newlines,
 or a text boundary. Letters, numbers, emoji and other symbols next to the brackets
 keep the text literal. Defined URL links can appear directly beside other text.
+Duplicate link labels resolve to their first definition. Labels are case sensitive,
+and `Document.links` retains all definitions in source order.
 Indented code removes the longest common space/tab prefix of its nonblank lines,
 following [Go comment code blocks](https://go.dev/doc/comment#code). Relative
 indentation and interior blank lines are retained in one code block; trailing

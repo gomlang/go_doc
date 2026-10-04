@@ -275,7 +275,9 @@ pub fn parse(input: string, limits: Limits) -> Result[Document, Error] {
     let nodes = Ref::new(0);
     let targets: HashMap[string, string] = HashMap::new();
     for link in links {
-        targets.insert(link.label, link.url);
+        if !targets.contains(link.label) {
+            targets.insert(link.label, link.url);
+        }
     }
     for entry in raw {
         if entry.kind == 0 {
