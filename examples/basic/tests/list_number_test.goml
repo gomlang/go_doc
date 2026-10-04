@@ -1,0 +1,19 @@
+package tests;
+
+use ecosystem::go_doc;
+use ecosystem::go_doc::{Format, Limits};
+use std::testing;
+
+#[test]
+fn downstream_html_list_numbering_preserves_resets_and_gaps() -> () {
+    let source = "Steps:\n\n  3. first\n  4. next\n  9. last";
+    let document = testing::expect_ok(go_doc::parse(source, Limits::standard()), "parse");
+    testing::assert_eq(
+        testing::expect_ok(go_doc::render(document, Format::Html, Limits::standard()), "HTML"),
+        "<p>Steps:</p>\n<ol><li value=\"3\">first</li><li>next</li><li value=\"9\">last</li></ol>",
+    );
+    testing::assert_eq(
+        testing::expect_ok(go_doc::render(document, Format::Comment, Limits::standard()), "comment"),
+        "Steps:\n\n 3. first\n 4. next\n 9. last",
+    );
+}

@@ -1,0 +1,94 @@
+package tests;
+
+use ecosystem::go_doc;
+use ecosystem::go_doc::{Block, Item, Inline, Format, Limits, ErrorKind};
+use std::testing;
+
+#[test]
+fn html_ordered_lists_preserve_explicit_item_numbers() -> () {
+    for (source, expected) in[
+        ("List:\n\n  1. item\n  2. item", "<p>List:</p>\n<ol><li>item</li><li>item</li></ol>"),
+        (
+            "List:\n\n  3. item\n  5. item",
+            "<p>List:</p>\n<ol><li value=\"3\">item</li><li value=\"5\">item</li></ol>",
+        ),
+        (
+            "List:\n\n  4. item\n  4. item\n  2. item",
+            "<p>List:</p>\n<ol><li value=\"4\">item</li><li value=\"4\">item</li><li value=\"2\">item</li></ol>",
+        ),
+        (
+            "List:\n\n  0. item\n  1. item",
+            "<p>List:</p>\n<ol><li value=\"0\">item</li><li>item</li></ol>",
+        ),
+        (
+            "List:\n\n  01. item\n  02. item\n  3. item",
+            "<p>List:</p>\n<ol><li value=\"01\">item</li><li>item</li><li value=\"3\">item</li></ol>",
+        ),
+        (
+            "List:\n\n  19. item\n  20. item",
+            "<p>List:</p>\n<ol><li value=\"19\">item</li><li>item</li></ol>",
+        ),
+        (
+            "List:\n\n  999. item\n  1000. item",
+            "<p>List:</p>\n<ol><li value=\"999\">item</li><li>item</li></ol>",
+        ),
+        (
+            "List:\n\n  999999999999999999999999999999999999. item\n  1000000000000000000000000000000000000. item",
+            "<p>List:</p>\n<ol><li value=\"999999999999999999999999999999999999\">item</li><li>item</li></ol>",
+        ),
+    ] {
+        let document = testing::expect_ok(go_doc::parse(source, Limits::standard()), "parse");
+        testing::assert_eq(
+            testing::expect_ok(go_doc::render(document, Format::Html, Limits::standard()), "HTML"),
+            expected,
+        );
+        testing::assert_eq(
+            testing::expect_ok(
+                go_doc::render(
+                    document,
+                    Format::Html,
+                    Limits { max_output_bytes: expected.byte_len(), ..Limits::standard() },
+                ),
+                "exact output limit",
+            ),
+            expected,
+        );
+        testing::assert_eq(
+            testing::expect_err(
+                go_doc::render(
+                    document,
+                    Format::Html,
+                    Limits { max_output_bytes: expected.byte_len() - 1, ..Limits::standard() },
+                ),
+                "output limit",
+            ).kind,
+            ErrorKind::Limit,
+        );
+    }
+}
+
+#[test]
+fn html_ordered_list_markers_from_callers_must_be_ascii_numbers() -> () {
+    for marker in["", "-1", "1.0", "١", "1\" onclick=\"bad"] {
+        let document = go_doc::Document {
+            blocks: Vec::from_array(
+                [
+                    Block::List(
+                        true,
+                        Vec::from_array(
+                            [Item { marker, text: Vec::from_array([Inline::Text("item")]) }],
+                        ),
+                    ),
+                ],
+            ),
+            links: Vec::new(),
+        };
+        testing::assert_eq(
+            testing::expect_err(
+                go_doc::render(document, Format::Html, Limits::standard()),
+                "invalid marker",
+            ).kind,
+            ErrorKind::Invalid,
+        );
+    }
+}

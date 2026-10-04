@@ -240,6 +240,20 @@ fn code_block(parts: Vec[string], count: Ref[isize], code: string, format: Forma
     Result::Ok(())
 }
 
+fn next_list_number(value: string) -> string {
+    let digits = value.to_bytes();
+    let mut index = digits.len();
+    while index > 0 {
+        index -= 1;
+        if digits[index] < b'9' {
+            digits[index] += 1;
+            return string_from_utf8(digits).1
+        }
+        digits[index] = b'0';
+    }
+    "1" + string_from_utf8(digits).1
+}
+
 fn list_block(
     parts: Vec[string],
     count: Ref[isize],
@@ -261,6 +275,7 @@ fn list_block(
             limits,
         )?;
     }
+    let mut next_number = "1";
     for index in 0..items.len() {
         if nodes.get() >= limits.max_inlines {
             return Result::Err(
@@ -269,7 +284,37 @@ fn list_block(
         }
         nodes.set(nodes.get() + 1);
         if format == Format::Html {
-            append(parts, count, "<li>", limits)?;
+            append(parts, count, "<li", limits)?;
+            if ordered {
+                let marker = items[index].marker;
+                if marker == "" {
+                    return Result::Err(
+                        Error {
+                            kind: ErrorKind::Invalid,
+                            line: 0,
+                            message: "empty ordered list marker",
+                        },
+                    )
+                }
+                for digit in marker.to_bytes() {
+                    if digit < b'0' || digit > b'9' {
+                        return Result::Err(
+                            Error {
+                                kind: ErrorKind::Invalid,
+                                line: 0,
+                                message: "ordered list marker must contain only ASCII digits",
+                            },
+                        )
+                    }
+                }
+                if marker != next_number {
+                    append(parts, count, " value=\"", limits)?;
+                    append(parts, count, marker, limits)?;
+                    append(parts, count, "\"", limits)?;
+                }
+                next_number = next_list_number(marker);
+            }
+            append(parts, count, ">", limits)?;
         } else {
             if index > 0 {
                 append(parts, count, "\n", limits)?;

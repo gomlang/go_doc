@@ -24,6 +24,10 @@ and `Document.links` retains all definitions in source order.
 When looking up a URL link, each newline or tab in its reference label becomes
 one ASCII space. Other whitespace and repeated spaces remain significant; the
 AST retains the reference label's original text.
+HTML ordered lists retain explicit item numbers, including non-one starts,
+repeated numbers and gaps. Decimal markers are incremented without a machine
+integer conversion. Caller-built ordered-list markers must contain only ASCII
+digits and must not be empty when rendering HTML.
 Indented code removes the longest common space/tab prefix of its nonblank lines,
 following [Go comment code blocks](https://go.dev/doc/comment#code). Relative
 indentation and interior blank lines are retained in one code block; trailing
