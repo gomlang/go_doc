@@ -1,0 +1,76 @@
+package tests;
+
+use ecosystem::go_doc;
+use ecosystem::go_doc::{Block, Inline, Limits, Format};
+use std::testing;
+
+#[test]
+fn blank_lines_between_same_kind_items_keep_one_list() -> () {
+    for (items, expected) in[
+        ("  - one\n\n  - two", "<ul><li>one</li><li>two</li></ul>"),
+        ("  - one\n \t\n\n\t* two", "<ul><li>one</li><li>two</li></ul>"),
+        ("  + one\n\n  • two\n\n  - three", "<ul><li>one</li><li>two</li><li>three</li></ul>"),
+        ("  3. one\n\n  5) two", "<ol><li value=\"3\">one</li><li value=\"5\">two</li></ol>"),
+    ] {
+        let document = testing::expect_ok(
+            go_doc::parse("Intro.\n\n" + items, Limits::standard()),
+            "parse list",
+        );
+        testing::assert_eq(document.blocks.len(), 2);
+        testing::assert_eq(
+            testing::expect_ok(go_doc::render(document, Format::Html, Limits::standard()), "HTML"),
+            "<p>Intro.</p>\n" + expected,
+        );
+        let canonical = testing::expect_ok(
+            go_doc::render(document, Format::Comment, Limits::standard()),
+            "canonical comment",
+        );
+        testing::assert(
+            testing::expect_ok(go_doc::parse(canonical, Limits::standard()), "round trip")
+                == document,
+        );
+    }
+}
+
+#[test]
+fn blank_list_grouping_keeps_other_blocks_and_links_separate() -> () {
+    for tail in["Paragraph.", "  code", "  2. numbered", "- unindented"] {
+        let document = testing::expect_ok(
+            go_doc::parse("Intro.\n\n  - one\n\n" + tail, Limits::standard()),
+            "separate block",
+        );
+        testing::assert_eq(document.blocks.len(), 3);
+    }
+    let document = testing::expect_ok(
+        go_doc::parse("Intro.\n\n  - one\n\n[Go]: https://go.dev\n\n  - two", Limits::standard()),
+        "definition boundary",
+    );
+    testing::assert_eq(document.blocks.len(), 3);
+    testing::assert_eq(document.links.len(), 1);
+    let document = testing::expect_ok(
+        go_doc::parse(
+            "Intro.\n\n  - [Go\n\n  - home]\n\n[Go home]: https://go.dev",
+            Limits::standard(),
+        ),
+        "distinct list item labels",
+    );
+    testing::assert_eq(document.blocks.len(), 2);
+    match document.blocks[1] {
+        Block::List(_, items) => {
+            testing::assert_eq(items.len(), 2);
+            testing::assert(items[0].text == Vec::from_array([Inline::Text("[Go")]));
+            testing::assert(items[1].text == Vec::from_array([Inline::Text("home]")]));
+        },
+        _ => testing::fail("expected list"),
+    }
+}
+
+#[test]
+fn blank_list_grouping_charges_blocks_and_inlines_after_grouping() -> () {
+    let source = "Intro.\n\n  - one\n\n  - two";
+    testing::assert_ok(
+        go_doc::parse(source, Limits { max_blocks: 2, max_inlines: 3, ..Limits::standard() }),
+    );
+    testing::assert_err(go_doc::parse(source, Limits { max_blocks: 1, ..Limits::standard() }));
+    testing::assert_err(go_doc::parse(source, Limits { max_inlines: 2, ..Limits::standard() }));
+}

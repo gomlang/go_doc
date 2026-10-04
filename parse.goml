@@ -297,7 +297,29 @@ pub fn parse(input: string, limits: Limits) -> Result[Document, Error] {
         }
         if stanza[0].starts_with(" ") || stanza[0].starts_with("\t") {
             let first = stanza[0].trim_start();
-            if list_marker(first).is_some() {
+            if let Some((ordered, _, _)) = list_marker(first) {
+                loop {
+                    let mut next = index;
+                    while next < lines.len() && lines[next].trim() == "" {
+                        next += 1;
+                    }
+                    if next == lines.len()
+                        || !(lines[next].starts_with(" ") || lines[next].starts_with("\t")) {
+                        break
+                    }
+                    if let Some((numbered, _, _)) = list_marker(lines[next].trim_start()) {
+                        if numbered != ordered {
+                            break
+                        }
+                    } else {
+                        break
+                    }
+                    index = next;
+                    while index < lines.len() && lines[index].trim() != "" {
+                        stanza.push(lines[index]);
+                        index += 1;
+                    }
+                }
                 raw.push(RawBlock { kind: 3, text: "", lines: stanza, line: start });
             } else {
                 loop {

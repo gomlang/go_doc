@@ -1,0 +1,18 @@
+package tests;
+
+use ecosystem::go_doc;
+use std::testing;
+
+#[test]
+fn downstream_blank_lines_do_not_split_numbered_list_items() -> () {
+    let limits = go_doc::Limits::standard();
+    let document = testing::expect_ok(
+        go_doc::parse("Steps.\n\n  3. first\n\n  5. second", limits),
+        "parse separated items",
+    );
+    testing::assert_eq(document.blocks.len(), 2);
+    testing::assert_eq(
+        testing::expect_ok(go_doc::render(document, go_doc::Format::Html, limits), "HTML"),
+        "<p>Steps.</p>\n<ol><li value=\"3\">first</li><li value=\"5\">second</li></ol>",
+    );
+}
