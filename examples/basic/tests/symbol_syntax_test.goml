@@ -1,0 +1,18 @@
+package tests;
+
+use ecosystem::go_doc::{parse, render, Limits, Format};
+use std::testing;
+
+#[test]
+fn downstream_unicode_symbols_and_import_paths_keep_their_link_kind() -> () {
+    let input = "[Éclair] [pkg.Éclair.Méthode] [example.com/a+b] [example.com/a~b] [pkg//name] [É١]";
+    let document = testing::expect_ok(parse(input, Limits::standard()), "parse");
+    testing::assert_eq(
+        testing::expect_ok(render(document, Format::Html, Limits::standard()), "HTML"),
+        "<p><code>Éclair</code> <code>pkg.Éclair.Méthode</code> <code>example.com/a+b</code> <code>example.com/a~b</code> [pkg//name] [É١]</p>",
+    );
+    testing::assert_eq(
+        testing::expect_ok(render(document, Format::Comment, Limits::standard()), "comment"),
+        input,
+    );
+}

@@ -1,0 +1,44 @@
+package tests;
+
+use ecosystem::go_doc::{Inline};
+use std::testing;
+
+#[test]
+fn symbol_links_accept_unicode_exported_names() -> () {
+    for label in[
+        "Éclair",
+        "Σ",
+        "Pkg.Éclair",
+        "T.Éclair",
+        "*Éclair",
+        "example.com/pkg.Éclair",
+        "Éclair.Méthode",
+        "pkg.Éclair.Méthode",
+        "Éclair2",
+        "Éclair中",
+        "Éclair_2",
+        "É1",
+        "𐐀",
+    ] {
+        testing::assert(
+            link_inlines("[" + label + "]") == Vec::from_array([Inline::DocLink(label)]),
+        );
+    }
+    for label in["éclair", "中文", "Éclair😀", "Éclair\u0301", "É١", "É９", "pkg.É١", "Éclair.Μ９"] {
+        let input = "[" + label + "]";
+        testing::assert(link_inlines(input) == Vec::from_array([Inline::Text(input)]));
+    }
+}
+
+#[test]
+fn symbol_import_paths_accept_allowed_punctuation_and_reject_empty_components() -> () {
+    for label in["example.com/a+b", "example.com/a~b", "example.com/a-b.C", "example.com/a_b.C"] {
+        testing::assert(
+            link_inlines("[" + label + "]") == Vec::from_array([Inline::DocLink(label)]),
+        );
+    }
+    for label in["/", "pkg//name", "pkg/", "**T", "a/.b", "a/b.", "-pkg/name", "pkg\\name"] {
+        let input = "[" + label + "]";
+        testing::assert(link_inlines(input) == Vec::from_array([Inline::Text(input)]));
+    }
+}

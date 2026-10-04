@@ -11,7 +11,14 @@ single-line `# ` headings, indented code blocks, bullet or numbered lists,
 `render(document, Format::Html, limits)` or another `Format` for output.
 Symbol links require adjacent Unicode punctuation, ASCII spaces/tabs/newlines,
 or a text boundary. Letters, numbers, emoji and other symbols next to the brackets
-keep the text literal. Defined URL links can appear directly beside other text.
+keep the text literal. Symbol names follow `go/doc/comment`'s exported-name
+syntax: a Unicode uppercase initial followed by Unicode letters, ASCII digits
+or underscores. Unlike the Go language's identifier grammar, this comment syntax
+does not accept non-ASCII decimal digits. An optional pointer marker, receiver
+and package prefix are recognized lexically. Import paths permit ASCII letters,
+digits, `_`, `-`, `.`, `+` and `~` within nonempty slash-separated components;
+components cannot start or end with a dot, and paths cannot start with a hyphen.
+Defined URL links can appear directly beside other text.
 Duplicate link labels resolve to their first definition. Labels are case sensitive,
 and `Document.links` retains all definitions in source order.
 When looking up a URL link, each newline or tab in its reference label becomes

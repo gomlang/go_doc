@@ -74,22 +74,69 @@ fn list_marker(line: string) -> Option[(bool, string, string)] {
     Option::None
 }
 
-fn doc_symbol(value: string) -> bool {
-    if value == "" {
+fn exported_name_prefix(value: string) -> Option[string] {
+    let mut start = 0;
+    for index in 0..value.byte_len() {
+        if value.byte_get(index) == b'.' {
+            start = index + 1;
+        }
+    }
+    let name = value.byte_slice(start, value.byte_len());
+    let Some((first, _)) = name.decode_at(0) else {
+        return Option::None
+    };
+    if !unicode::is_uppercase(first) {
+        return Option::None
+    }
+    for ch in name.chars() {
+        if !unicode::is_letter(ch) && ch != '_' && !(ch >= '0' && ch <= '9') {
+            return Option::None
+        }
+    }
+    Option::Some(
+        if start == 0 {
+            ""
+        } else {
+            value.byte_slice(0, start - 1)
+        },
+    )
+}
+
+fn import_path(value: string) -> bool {
+    if value == "" || value.starts_with("-") {
         return false
     }
-    for index in 0..value.byte_len() {
-        let ch = value.byte_get(index);
-        if !(ch >= 48 && ch <= 57) && !(ch >= 65 && ch <= 90) && !(ch >= 97 && ch <= 122)
-            && ch != 95
-            && ch != 46
-            && ch != 47
-            && ch != 42
-            && ch != 45 {
+    for part in value.split("/") {
+        if part == "" || part.starts_with(".") || part.ends_with(".") {
             return false
+        }
+        for ch in part.to_bytes() {
+            if !(ch >= b'0' && ch <= b'9') && !(ch >= b'A' && ch <= b'Z')
+                && !(ch >= b'a' && ch <= b'z')
+                && ch != b'_'
+                && ch != b'.'
+                && ch != b'-'
+                && ch != b'+'
+                && ch != b'~' {
+                return false
+            }
         }
     }
     true
+}
+
+fn doc_symbol(value: string) -> bool {
+    let value = if value.starts_with("*") {
+        value.byte_slice(1, value.byte_len())
+    } else {
+        value
+    };
+    if let Some(prefix) = exported_name_prefix(value) {
+        let package_path = exported_name_prefix(prefix).unwrap_or(prefix);
+        package_path == "" || import_path(package_path)
+    } else {
+        import_path(value)
+    }
 }
 
 fn link_boundary(value: string, index: isize) -> bool {
