@@ -1,6 +1,7 @@
 package go_doc;
 
 use std::utf8;
+use std::unicode;
 
 struct RawBlock {
     kind: isize,
@@ -90,8 +91,14 @@ fn link_boundary(value: string, index: isize) -> bool {
     if index < 0 || index >= value.byte_len() {
         return true
     }
-    let ch = value.byte_get(index);
-    !((ch >= 48 && ch <= 57) || (ch >= 65 && ch <= 90) || (ch >= 97 && ch <= 122) || ch == 95)
+    let mut index = index;
+    while index > 0 && value.byte_get(index) & 0xc0 == 0x80 {
+        index -= 1;
+    }
+    let Some((ch, _)) = value.decode_at(index) else {
+        return false
+    };
+    unicode::is_punctuation(ch) || ch == ' ' || ch == '\t' || ch == '\n'
 }
 
 fn inline_node(nodes: Ref[isize], limits: Limits, line: isize) -> Result[(), Error] {
@@ -118,12 +125,12 @@ fn parse_inline(
             while end < value.byte_len() && value.byte_get(end) != 93 && value.byte_get(end) != 91 {
                 end += 1;
             }
-            if end < value.byte_len() && value.byte_get(end) == 93
-                && link_boundary(value, cursor - 1)
-                && link_boundary(value, end + 1) {
+            if end < value.byte_len() && value.byte_get(end) == 93 {
                 let label = value.byte_slice(cursor + 1, end);
                 let destination = links.get(label).unwrap_or("");
-                if destination != "" || doc_symbol(label) {
+                if destination != ""
+                    || doc_symbol(label) && link_boundary(value, cursor - 1)
+                        && link_boundary(value, end + 1) {
                     if plain < cursor {
                         inline_node(nodes, limits, line)?;
                         result.push(Inline::Text(value.byte_slice(plain, cursor)));

@@ -1,0 +1,14 @@
+package tests;
+
+use ecosystem::go_doc::{parse, render, Format, Limits};
+use std::testing;
+
+#[test]
+fn downstream_bracket_links_follow_unicode_and_url_boundaries() -> () {
+    let input = "中[Widget] +[Widget] _[Widget]_ 中[Guide]文\n\n[Guide]: https://example.test";
+    let document = testing::expect_ok(parse(input, Limits::standard()), "parse");
+    testing::assert_eq(
+        testing::expect_ok(render(document, Format::Html, Limits::standard()), "HTML"),
+        "<p>中[Widget] +[Widget] _<code>Widget</code>_ 中<a href=\"https://example.test\">Guide</a>文</p>",
+    );
+}

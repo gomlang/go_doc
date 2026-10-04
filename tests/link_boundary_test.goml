@@ -1,0 +1,48 @@
+package tests;
+
+use ecosystem::go_doc;
+use ecosystem::go_doc::{Block, Inline, Limits};
+use std::testing;
+
+fn link_inlines(input: string) -> Vec[Inline] {
+    let document = testing::expect_ok(go_doc::parse(input, Limits::standard()), "parse");
+    match document.blocks[0] {
+        Block::Paragraph(inlines) => inlines,
+        _ => {
+            testing::fail("expected paragraph");
+            Vec::new()
+        },
+    }
+}
+
+#[test]
+fn symbol_links_require_unicode_punctuation_or_ascii_whitespace_boundaries() -> () {
+    for adjacent in["a", "1", "中", "é", "😀", "+", "$", "\u00a0", "\u0301"] {
+        for input in[adjacent + "[Widget]", "[Widget]" + adjacent] {
+            testing::assert(link_inlines(input) == Vec::from_array([Inline::Text(input)]));
+        }
+    }
+    for boundary in["_", ",", "。", "（", "）", "—", " ", "\t", "\n"] {
+        for input in["before" + boundary + "[Widget]", "[Widget]" + boundary + "after"] {
+            let inlines = link_inlines(input);
+            testing::assert(inlines.contains(Inline::DocLink("Widget")));
+        }
+    }
+}
+
+#[test]
+fn defined_url_links_do_not_require_symbol_link_boundaries() -> () {
+    for adjacent in["a", "中", "😀", "+", "_"] {
+        let input = adjacent + "[Guide]" + adjacent + "\n\n[Guide]: https://example.test";
+        testing::assert(
+            link_inlines(input)
+                == Vec::from_array(
+                    [
+                        Inline::Text(adjacent),
+                        Inline::UrlLink("Guide", "https://example.test"),
+                        Inline::Text(adjacent),
+                    ],
+                ),
+        );
+    }
+}

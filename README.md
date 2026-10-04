@@ -9,6 +9,9 @@ syntax follows the [Go doc comment specification](https://go.dev/doc/comment).
 single-line `# ` headings, indented code blocks, bullet or numbered lists,
 `[Text]: URL` definitions, URL links, and lexical symbol links. Use
 `render(document, Format::Html, limits)` or another `Format` for output.
+Symbol links require adjacent Unicode punctuation, ASCII spaces/tabs/newlines,
+or a text boundary. Letters, numbers, emoji and other symbols next to the brackets
+keep the text literal. Defined URL links can appear directly beside other text.
 Indented code removes the longest common space/tab prefix of its nonblank lines,
 following [Go comment code blocks](https://go.dev/doc/comment#code). Relative
 indentation and interior blank lines are retained in one code block; trailing
