@@ -1,0 +1,74 @@
+package tests;
+
+use ecosystem::go_doc;
+use ecosystem::go_doc::{Block, Inline, Limits};
+use std::testing;
+
+#[test]
+fn link_lookup_normalizes_each_tab_and_newline_without_changing_the_label() -> () {
+    for label in["Go home", "Go\thome", "Go\nhome"] {
+        let document = testing::expect_ok(
+            go_doc::parse("Read [" + label + "].\n\n[Go home]: https://go.dev", Limits::standard()),
+            "parse",
+        );
+        let inlines = match document.blocks[0] {
+            Block::Paragraph(inlines) => inlines,
+            _ => {
+                testing::fail("paragraph");
+                Vec::new()
+            },
+        };
+        testing::assert(
+            inlines
+                == Vec::from_array(
+                    [
+                        Inline::Text("Read "),
+                        Inline::UrlLink(label, "https://go.dev"),
+                        Inline::Text("."),
+                    ],
+                ),
+        );
+    }
+}
+
+#[test]
+fn link_lookup_preserves_whitespace_counts_and_other_unicode_spaces() -> () {
+    let cases = Vec::from_array(
+        [
+            ("Go\t\nhome", "Go  home", true),
+            ("Go\t\nhome", "Go home", false),
+            ("Go home", "Go home", false),
+            ("Go home", "Go home", true),
+            ("Go\thome", "Go\thome", false),
+            ("go\thome", "Go home", false),
+        ],
+    );
+    for (label, definition, matches) in cases {
+        let document = testing::expect_ok(
+            go_doc::parse(
+                "[" + label + "]\n\n[" + definition + "]: https://go.dev",
+                Limits::standard(),
+            ),
+            "parse",
+        );
+        let inlines = match document.blocks[0] {
+            Block::Paragraph(inlines) => inlines,
+            _ => {
+                testing::fail("paragraph");
+                Vec::new()
+            },
+        };
+        testing::assert(
+            inlines
+                == Vec::from_array(
+                    [
+                        if matches {
+                            Inline::UrlLink(label, "https://go.dev")
+                        } else {
+                            Inline::Text("[" + label + "]")
+                        },
+                    ],
+                ),
+        );
+    }
+}

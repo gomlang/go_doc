@@ -127,7 +127,9 @@ fn parse_inline(
             }
             if end < value.byte_len() && value.byte_get(end) == 93 {
                 let label = value.byte_slice(cursor + 1, end);
-                let destination = links.get(label).unwrap_or("");
+                let destination = links.get(label.replace("\n", " ").replace("\t", " ")).unwrap_or(
+                    "",
+                );
                 if destination != ""
                     || doc_symbol(label) && link_boundary(value, cursor - 1)
                         && link_boundary(value, end + 1) {

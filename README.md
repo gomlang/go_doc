@@ -14,6 +14,9 @@ or a text boundary. Letters, numbers, emoji and other symbols next to the bracke
 keep the text literal. Defined URL links can appear directly beside other text.
 Duplicate link labels resolve to their first definition. Labels are case sensitive,
 and `Document.links` retains all definitions in source order.
+When looking up a URL link, each newline or tab in its reference label becomes
+one ASCII space. Other whitespace and repeated spaces remain significant; the
+AST retains the reference label's original text.
 Indented code removes the longest common space/tab prefix of its nonblank lines,
 following [Go comment code blocks](https://go.dev/doc/comment#code). Relative
 indentation and interior blank lines are retained in one code block; trailing

@@ -1,0 +1,19 @@
+package tests;
+
+use ecosystem::go_doc;
+use std::testing;
+
+#[test]
+fn downstream_wrapped_link_labels_resolve_their_definition() -> () {
+    let document = testing::expect_ok(
+        go_doc::parse("Read [Go\nhome].\n\n[Go home]: https://go.dev", go_doc::Limits::standard()),
+        "parse",
+    );
+    testing::assert_eq(
+        testing::expect_ok(
+            go_doc::render(document, go_doc::Format::Html, go_doc::Limits::standard()),
+            "render",
+        ),
+        "<p>Read <a href=\"https://go.dev\">Go\nhome</a>.</p>",
+    );
+}
