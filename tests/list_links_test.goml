@@ -1,0 +1,52 @@
+package tests;
+
+use ecosystem::go_doc;
+use ecosystem::go_doc::{Block, Inline, Limits};
+use std::testing;
+
+#[test]
+fn list_continuations_form_one_inline_link_label() -> () {
+    for marker in["-", "1."] {
+        let document = testing::expect_ok(
+            go_doc::parse(
+                "  " + marker + " Read [Go\n    home].\n\n[Go home]: https://go.dev",
+                Limits::standard(),
+            ),
+            "parse",
+        );
+        match document.blocks[0] {
+            Block::List(ordered, items) => {
+                testing::assert_eq(ordered, marker == "1.");
+                testing::assert_eq(items.len(), 1);
+                testing::assert(
+                    items[0].text
+                        == Vec::from_array(
+                            [
+                                Inline::Text("Read "),
+                                Inline::UrlLink("Go\nhome", "https://go.dev"),
+                                Inline::Text("."),
+                            ],
+                        ),
+                );
+            },
+            _ => testing::fail("list"),
+        }
+    }
+}
+
+#[test]
+fn links_cannot_cross_list_items_and_joined_inlines_still_obey_budgets() -> () {
+    let source = "  - [Go\n  - home]\n\n[Go home]: https://go.dev";
+    let document = testing::expect_ok(go_doc::parse(source, Limits::standard()), "separate items");
+    match document.blocks[0] {
+        Block::List(_, items) => {
+            testing::assert_eq(items.len(), 2);
+            testing::assert(items[0].text == Vec::from_array([Inline::Text("[Go")]));
+            testing::assert(items[1].text == Vec::from_array([Inline::Text("home]")]));
+        },
+        _ => testing::fail("list"),
+    }
+    let source = "  - Read [Go\n    home].\n\n[Go home]: https://go.dev";
+    testing::assert_ok(go_doc::parse(source, Limits { max_inlines: 3, ..Limits::standard() }));
+    testing::assert_err(go_doc::parse(source, Limits { max_inlines: 2, ..Limits::standard() }));
+}

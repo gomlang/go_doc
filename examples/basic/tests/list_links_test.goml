@@ -1,0 +1,22 @@
+package tests;
+
+use ecosystem::go_doc;
+use std::testing;
+
+#[test]
+fn downstream_list_continuations_resolve_link_labels() -> () {
+    let document = testing::expect_ok(
+        go_doc::parse(
+            "  - Read [Go\n    home].\n\n[Go home]: https://go.dev",
+            go_doc::Limits::standard(),
+        ),
+        "parse",
+    );
+    testing::assert_eq(
+        testing::expect_ok(
+            go_doc::render(document, go_doc::Format::Html, go_doc::Limits::standard()),
+            "render",
+        ),
+        "<ul><li>Read <a href=\"https://go.dev\">Go\nhome</a>.</li></ul>",
+    );
+}

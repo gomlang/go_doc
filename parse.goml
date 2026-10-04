@@ -10,6 +10,11 @@ struct RawBlock {
     line: isize,
 }
 
+struct RawItem {
+    marker: string,
+    lines: Vec[string],
+}
+
 fn failure(kind: ErrorKind, line: isize, message: string) -> Error {
     Error { kind, line, message }
 }
@@ -293,12 +298,12 @@ pub fn parse(input: string, limits: Limits) -> Result[Document, Error] {
         } else if entry.kind == 2 {
             blocks.push(Block::Code(unindent_code(entry.lines)));
         } else {
-            let items: Vec[Item] = Vec::new();
+            let raw_items: Vec[RawItem] = Vec::new();
             let mut ordered = false;
             for line in entry.lines {
                 let stripped = line.trim_start();
                 if let Some((numbered, marker, body)) = list_marker(stripped) {
-                    if items.len() == 0 {
+                    if raw_items.len() == 0 {
                         ordered = numbered;
                     }
                     if numbered != ordered {
@@ -306,19 +311,28 @@ pub fn parse(input: string, limits: Limits) -> Result[Document, Error] {
                             failure(ErrorKind::Invalid, entry.line, "mixed list markers"),
                         )
                     }
-                    items.push(
-                        Item {
-                            marker,
-                            text: parse_inline(body, targets, nodes, limits, entry.line)?,
-                        },
-                    );
-                } else if items.len() > 0 {
-                    let last = items.len() - 1;
-                    let more = parse_inline("\n" + stripped, targets, nodes, limits, entry.line)?;
-                    items[last].text.extend(more);
+                    raw_items.push(RawItem { marker, lines: Vec::from_array([body]) });
+                } else if raw_items.len() > 0 {
+                    let last = raw_items.len() - 1;
+                    raw_items[last].lines.push(stripped);
                 } else {
                     return Result::Err(failure(ErrorKind::Invalid, entry.line, "invalid list"))
                 }
+            }
+            let items: Vec[Item] = Vec::new();
+            for item in raw_items {
+                items.push(
+                    Item {
+                        marker: item.marker,
+                        text: parse_inline(
+                            item.lines.join("\n"),
+                            targets,
+                            nodes,
+                            limits,
+                            entry.line,
+                        )?,
+                    },
+                );
             }
             blocks.push(Block::List(ordered, items));
         }

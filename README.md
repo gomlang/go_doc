@@ -54,7 +54,8 @@ This module intentionally omits Go source extraction, package/import resolution,
 note extraction, deprecation semantics, directives, and
 `gofmt`'s legacy-heading and indentation heuristics. Symbol links render as
 code in HTML and Markdown because a package resolver is not supplied. List
-items support continuation text but no nested blocks. Unsupported bracketed
+items support continuation text but no nested blocks. Inline links can span
+continuation lines within an item, but cannot cross item boundaries. Unsupported bracketed
 text remains ordinary text. This API has no runtime Go implementation.
 
 ## Development and examples
