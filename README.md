@@ -83,12 +83,5 @@ goml test
 
 `goml test` builds the example and runs its tests. `(cd ../workflows && just ecosystem-test go_doc)` runs the library-specific smoke and compatibility checks.
 
-## Native dependency setup
-
-The HTML dependency includes a managed Go adapter for document parsing and
-sanitization. Projects using this module need a module-root `go.mod`, even when
-they use only the existing text APIs. A minimal Go module with `go 1.26.0` is
-sufficient; GoML generates the adapter requirements and replacements. This
-repository includes that manifest. Fetch the declared native Go dependencies
-before building with readonly module resolution; ecosystem verification and CI
-do this automatically.
+The development-only Markdown dependency and its HTML dependency are implemented in
+GoML. Tests require no native adapter setup or module-root `go.mod`.
